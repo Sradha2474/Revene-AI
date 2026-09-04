@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revene — Predictive revenue recovery</title>
+<meta name="description" content="Revene detects payments that are about to fail, intervenes early, and recovers lost revenue with bounded workflows and a full audit trail.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@500&display=swap');
+
+  :root {
+    /* Softer, eyes-friendly: charcoal + steel teal (not electric blue) */
+    --bg: #0C1118;
+    --bg-2: #121A24;
+    --surface: #172030;
+    --text: #E8EEF4;
+    --muted: #8A97A8;
+    --line: rgba(232, 238, 244, 0.08);
+    --accent: #6BA3B5;        /* soft steel */
+    --accent-2: #4F8F9E;      /* deeper teal-steel */
+    --accent-soft: rgba(107, 163, 181, 0.14);
+    --ok: #5EC4A0;
+    --warn: #D4A574;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+
+  .field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 80% 50% at 90% -5%, rgba(107, 163, 181, 0.16), transparent 55%),
+      radial-gradient(ellipse 45% 35% at 0% 80%, rgba(79, 143, 158, 0.1), transparent 50%),
+      var(--bg);
+  }
+  .field::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0.35;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 72px 72px;
+    mask-image: radial-gradient(ellipse 70% 60% at 75% 20%, #000 15%, transparent 70%);
+  }
+
+  .page { position: relative; z-index: 1; }
+
+  nav {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: -0.04em;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .logo span { color: var(--accent); }
+  .nav-right { display: flex; align-items: center; gap: 22px; }
+  .nav-right a {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .nav-right a:hover { color: var(--text); }
+  .nav-cta {
+    color: var(--text) !important;
+    border: 1px solid rgba(232,238,244,0.16);
+    padding: 9px 14px;
+    border-radius: 999px;
+  }
+  .nav-cta:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  /* Rolling Revene marquee */
+  .marquee-wrap {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: rgba(18, 26, 36, 0.65);
+    overflow: hidden;
+    padding: 14px 0;
+  }
+  .marquee {
+    display: flex;
+    width: max-content;
+    animation: marquee 28s linear infinite;
+    gap: 0;
+  }
+  .marquee span {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 28px;
+    white-space: nowrap;
+  }
+  .marquee span em {
+    font-style: normal;
+    color: var(--accent);
+  }
+  .marquee span.dot { color: rgba(107, 163, 181, 0.45); padding: 0 4px; }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  .hero {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 48px 24px 64px;
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 40px;
+    align-items: center;
+    min-height: calc(100vh - 140px);
+  }
+
+  .hero-brand {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(3.6rem, 9vw, 6.2rem);
+    letter-spacing: -0.06em;
+    line-height: 0.9;
+    margin-bottom: 22px;
+    opacity: 0;
+    animation: rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards 0.05s;
+  }
+  .hero-brand .roll {
+    display: inline-block;
+    color: var(--accent);
+    animation: brandPulse 3.5s ease-in-out infinite;
+  }
+  @keyframes brandPulse {
+    0%, 100% { opacity: 1; filter: brightness(1); }
+    50% { opacity: 0.82; filter: brightness(1.15); }
+  }
+
+  .hero h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: clamp(1.3rem, 2.3vw, 1.7rem);
+    letter-spacing: -0.03em;
+    line-height: 1.22;
+    max-width: 16ch;
+    margin-bottom: 14px;
+    opacity: 0;
+    animation: rise 0.85s ease forwards 0.18s;
+  }
+  .hero-support {
+    font-size: 1.02rem;
+    color: var(--muted);
+    max-width: 36ch;
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: rise 0.85s ease forwards 0.3s;
+  }
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 18px;
+    align-items: center;
+    opacity: 0;
+    animation: rise 0.85s ease forwards 0.42s;
+  }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent-2);
+    color: #fff;
+    text-decoration: none;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 14px 22px;
+    border-radius: 10px;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  }
+  .btn-primary:hover {
+    background: #3F7A88;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 28px rgba(79, 143, 158, 0.28);
+  }
+  .btn-ghost {
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.95rem;
+    border-bottom: 1px solid rgba(232,238,244,0.14);
+    padding-bottom: 2px;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+  .panel {
+    background: rgba(23, 32, 48, 0.88);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    opacity: 0;
+    animation: rise 0.95s ease forwards 0.28s;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  }
+  .panel-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255,255,255,0.02);
+  }
+  .panel-bar i {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(255,255,255,0.14);
+    display: block;
+  }
+  .panel-bar span {
+    margin-left: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  .panel-body { padding: 26px; }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .big-num {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(2.6rem, 4.5vw, 3.4rem);
+    letter-spacing: -0.05em;
+    line-height: 1;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .big-num .cur { color: var(--accent); margin-right: 2px; }
+  .big-num .digit {
+    display: inline-block;
+    min-width: 0.55em;
+    text-align: center;
+  }
+  .big-hint { font-size: 0.88rem; color: var(--muted); margin-bottom: 22px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  .stat {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .stat .k {
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .stat .v { font-family: 'JetBrains Mono', monospace; font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+  .stat .v.ok { color: var(--ok); }
+
+  /* Photo strip */
+  .visuals {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 24px 72px;
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 16px;
+  }
+  .visuals figure {
+    margin: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    position: relative;
+    background: var(--surface);
+  }
+  .visuals img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    min-height: 220px;
+    max-height: 320px;
+    transition: transform 0.6s ease;
+  }
+  .visuals figure:hover img { transform: scale(1.03); }
+  .visuals figcaption {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 16px 18px;
+    background: linear-gradient(transparent, rgba(12, 17, 24, 0.92));
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .visuals figcaption span {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--muted);
+    font-weight: 400;
+    margin-top: 2px;
+  }
+
+  .section {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 80px 24px;
+    border-top: 1px solid var(--line);
+  }
+  .section-kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .section h2 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.8rem, 3.2vw, 2.5rem);
+    letter-spacing: -0.04em;
+    line-height: 1.08;
+    max-width: 14ch;
+    margin-bottom: 12px;
+  }
+  .section .lead {
+    color: var(--muted);
+    font-size: 1.02rem;
+    max-width: 44ch;
+    margin-bottom: 40px;
+  }
+
+  .lanes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .lane {
+    background: var(--bg-2);
+    padding: 28px 24px;
+    min-height: 180px;
+  }
+  .lane .n {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .lane h3 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    margin-bottom: 8px;
+  }
+  .lane p { color: var(--muted); font-size: 0.9rem; max-width: 26ch; }
+
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  .rules { list-style: none; }
+  .rules li {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 12px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.98rem;
+  }
+  .rules .idx {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--accent);
+  }
+
+  .cta-block {
+    background: linear-gradient(135deg, rgba(107, 163, 181, 0.14), rgba(79, 143, 158, 0.04));
+    border: 1px solid rgba(107, 163, 181, 0.28);
+    border-radius: 18px;
+    padding: 40px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+  }
+  .cta-block h2 { max-width: 12ch; margin: 0 0 8px; }
+  .cta-block p { color: var(--muted); margin: 0; max-width: 34ch; }
+
+  footer {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 24px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+  footer a { color: var(--muted); text-decoration: none; }
+  footer a:hover { color: var(--text); }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; min-height: auto; }
+    .visuals { grid-template-columns: 1fr; }
+    .lanes { grid-template-columns: 1fr; }
+    .split { grid-template-columns: 1fr; gap: 28px; }
+    .nav-right a:not(.nav-cta) { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="field" aria-hidden="true"></div>
+
+  <div class="page">
+    <nav>
+      <a class="logo" href="/">Rev<span>ene</span></a>
+      <div class="nav-right">
+        <a href="#product">Product</a>
+        <a href="#controls">Controls</a>
+        <a class="nav-cta" href="/demo">Open console</a>
+      </div>
+    </nav>
+
+    <div class="marquee-wrap" aria-hidden="true">
+      <div class="marquee" id="marquee">
+        <!-- duplicated in JS for seamless loop -->
+      </div>
+    </div>
+
+    <header class="hero">
+      <div>
+        <p class="hero-brand">Rev<span class="roll">ene</span></p>
+        <h1>Find revenue slipping away. Win it back.</h1>
+        <p class="hero-support">
+          Predictive recovery for payments that degrade, fail, or get abandoned —
+          with bounded interventions and a full audit trail.
+        </p>
+        <div class="hero-actions">
+          <a class="btn-primary" href="/demo">Open live console →</a>
+          <a class="btn-ghost" href="#product">How it works</a>
+        </div>
+      </div>
+
+      <aside class="panel" aria-label="Live recovery metrics">
+        <div class="panel-bar">
+          <i></i><i></i><i></i>
+          <span>revene / console</span>
+        </div>
+        <div class="panel-body">
+          <div class="eyebrow">Live · won back</div>
+          <div class="big-num"><span class="cur">₹</span><span id="hero-won">0</span></div>
+          <p class="big-hint" id="hero-meta">Rolling total from the recovery agent</p>
+          <div class="stats">
+            <div class="stat">
+              <div class="k">Recovered</div>
+              <div class="v ok" id="sig-recovered">₹0</div>
+            </div>
+            <div class="stat">
+              <div class="k">Preempted</div>
+              <div class="v" id="sig-preempted">₹0</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </header>
+
+    <section class="visuals" aria-label="Product atmosphere">
+      <figure>
+        <img src="/assets/revene-hero-desk.png" alt="Modern checkout moment on a desk" width="1200" height="675" loading="lazy">
+        <figcaption>
+          Catch the fail at the moment it happens
+          <span>Before the customer abandons checkout</span>
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="/assets/revene-flow-abstract.png" alt="Abstract signal of revenue recovery" width="1200" height="675" loading="lazy">
+        <figcaption>
+          Close the loop
+          <span>Detect → decide → recover → audit</span>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="section" id="product">
+      <div class="section-kicker">Product</div>
+      <h2>Detect. Decide. Recover.</h2>
+      <p class="lead">
+        Two lanes: save the payment while it is still degrading,
+        then recover what already failed — with hard stop rules.
+      </p>
+      <div class="lanes">
+        <article class="lane">
+          <div class="n">01</div>
+          <h3>Sense the slip</h3>
+          <p>ML success odds and live bank health flag risk before the customer leaves.</p>
+        </article>
+        <article class="lane">
+          <div class="n">02</div>
+          <h3>One intervention</h3>
+          <p>Switch method, smart retry, collect link, or escalate — never unbounded spam.</p>
+        </article>
+        <article class="lane">
+          <div class="n">03</div>
+          <h3>Measure the ₹</h3>
+          <p>Batch view: amount at risk versus amount won back, every step audited.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="controls">
+      <div class="split">
+        <div>
+          <div class="section-kicker">Controls</div>
+          <h2>Bounded by design.</h2>
+          <p class="lead" style="margin-bottom:0;">
+            Stopping rules finance teams can trust —
+            every action explainable in the audit trail.
+          </p>
+        </div>
+        <ul class="rules">
+          <li><span class="idx">01</span><span>Hard stop after three attempts</span></li>
+          <li><span class="idx">02</span><span>Skip noise below your amount threshold</span></li>
+          <li><span class="idx">03</span><span>No blind retry during bank outage</span></li>
+          <li><span class="idx">04</span><span>ROI gate when success odds are too low</span></li>
+          <li><span class="idx">05</span><span>Escalate to human, then stop</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:32px; border-top:none;">
+      <div class="cta-block">
+        <div>
+          <h2>See money come back.</h2>
+          <p>Simulate an outage, run a recovery batch, open any case audit.</p>
+        </div>
+        <a class="btn-primary" href="/demo">Launch console →</a>
+      </div>
+    </section>
+
+    <footer>
+      <div>Revene</div>
+      <div><a href="/demo">Console</a></div>
+    </footer>
+  </div>
+
+<script>
+  // Rolling brand strip
+  (function () {
+    const items = [
+      "Revene", "Predict · Recover", "At-risk revenue", "Stopping rules",
+      "Audit trail", "Preempt lane", "Smart retry", "Batch ₹ proof"
+    ];
+    const row = items.map(t => {
+      if (t === "Revene") return `<span><em>Revene</em></span><span class="dot">·</span>`;
+      return `<span>${t}</span><span class="dot">·</span>`;
+    }).join("");
+    document.getElementById("marquee").innerHTML = row + row;
+  })();
+
+  function money(n) {
+    return "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  }
+
+  // Smooth rolling counter (eases up whenever live totals climb)
+  function animateTo(el, target, duration) {
+    const start = Number(String(el.dataset.value || el.textContent).replace(/,/g, "")) || 0;
+    if (target === start) {
+      el.textContent = Math.round(target).toLocaleString("en-IN");
+      el.dataset.value = target;
+      return;
+    }
+    const t0 = performance.now();
+    const from = start;
+    function frame(now) {
+      const p = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const val = Math.round(from + (target - from) * eased);
+      el.textContent = val.toLocaleString("en-IN");
+      if (p < 1) requestAnimationFrame(frame);
+      else el.dataset.value = target;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function refreshStats() {
+    fetch("/api/db_stats")
+      .then(r => r.json())
+      .then(s => {
+        const recovered = Number(s.live_revenue_recovered || s.revenue_recovered || 0);
+        const preempted = Number(s.live_revenue_preempted || 0);
+        const won = recovered + preempted;
+        animateTo(document.getElementById("hero-won"), won, 1100);
+        document.getElementById("sig-recovered").textContent = money(recovered);
+        document.getElementById("sig-preempted").textContent = money(preempted);
+        if (won > 0) {
+          document.getElementById("hero-meta").textContent =
+            "Recovered after failure + saved before failure";
+        }
+      })
+      .catch(() => {});
+  }
+
+  refreshStats();
+  setInterval(refreshStats, 2000);
+</script>
+</body>
+</html>
