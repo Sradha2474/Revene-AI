@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Revene — Recovery console</title>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  if (typeof io === 'undefined') {
+    document.write('<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"><\/script>');
+  }
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --ink: #0B1018;
+    --panel: #121A26;
+    --panel-alt: #172131;
+    --border: #253247;
+    --text: #E7ECF3;
+    --muted: #7E8CA0;
+    --safe: #35D399;
+    --risk: #F0A93E;
+    --outage: #FF5E62;
+    --brand: #3B82F6;
+    --preempt: #38BDF8;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .status-pill {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 13px; color: var(--muted);
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--safe);
+    animation: pulse 2s infinite;
+  }
+  .dot.outage { background: var(--outage); animation: pulse-outage 1.1s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(53,211,153,0.5); } 70% { box-shadow: 0 0 0 6px rgba(53,211,153,0); } 100% { box-shadow: 0 0 0 0 rgba(53,211,153,0); } }
+  @keyframes pulse-outage { 0% { box-shadow: 0 0 0 0 rgba(255,94,98,0.6); } 70% { box-shadow: 0 0 0 8px rgba(255,94,98,0); } 100% { box-shadow: 0 0 0 0 rgba(255,94,98,0); } }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .metric {
+    background: var(--ink);
+    padding: 18px 22px;
+  }
+  .metric-label { font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+  .metric-value { font-size: 26px; font-weight: 600; line-height: 1.1; }
+  .metric-value.safe { color: var(--safe); }
+  .metric-value.preempt { color: var(--preempt); }
+  .metric-value.recovered { color: var(--safe); }
+  .metric-value.risk { color: var(--risk); }
+  .metric-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  main {
+    display: grid;
+    grid-template-columns: 300px 1fr 340px;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 140px);
+  }
+  .col { background: var(--ink); }
+
+  .section { padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .section h2 { font-size: 12px; font-weight: 500; color: var(--muted); margin: 0 0 10px 0; letter-spacing: 0.02em; text-transform: uppercase; }
+
+  .bank-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .bank-row:last-child { border-bottom: none; }
+  .bank-row.outage { color: var(--outage); }
+  .trigger-btn {
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .trigger-btn:hover { border-color: var(--outage); color: var(--outage); }
+
+  .batch-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--brand);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .batch-btn:hover { filter: brightness(1.08); }
+  .batch-btn:disabled { opacity: 0.6; cursor: wait; }
+
+  .batch-result {
+    margin-top: 10px;
+    padding: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.45;
+    display: none;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  thead th {
+    text-align: left; font-weight: 500; color: var(--muted);
+    font-size: 11px; padding: 8px 14px; border-bottom: 1px solid var(--border);
+  }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tbody tr:first-child { animation: rowIn 0.35s ease; }
+  tbody tr.clickable { cursor: pointer; }
+  tbody tr.clickable:hover { background: var(--panel); }
+  @keyframes rowIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+
+  .tag {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    border: 1px solid transparent;
+  }
+  .tag-method { background: rgba(59,130,246,0.12); color: var(--brand); border-color: rgba(59,130,246,0.3); }
+  .tag-degrading { background: rgba(240,169,62,0.12); color: var(--risk); border-color: rgba(240,169,62,0.35); }
+  .tag-failed { background: rgba(255,94,98,0.12); color: var(--outage); border-color: rgba(255,94,98,0.35); }
+  .tag-preempt { background: rgba(56,189,248,0.12); color: var(--preempt); border-color: rgba(56,189,248,0.35); }
+  .tag-recover { background: rgba(53,211,153,0.12); color: var(--safe); border-color: rgba(53,211,153,0.35); }
+  .outcome-success { color: var(--safe); }
+  .outcome-fail { color: var(--outage); }
+  .muted { color: var(--muted); font-size: 11.5px; }
+
+  .ledger-wrap, .queue-wrap { max-height: calc(100vh - 220px); overflow-y: auto; }
+
+  .audit-box {
+    padding: 14px 16px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .audit-box h3 { margin: 0 0 8px; font-size: 13px; }
+  .audit-step {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .audit-step .when { color: var(--muted); font-size: 10.5px; }
+  .audit-step .step-name {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--preempt);
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+  .empty-hint { color: var(--muted); font-size: 12.5px; padding: 8px 0; }
+
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 1fr; }
+    .metrics { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1><a href="/" style="color:inherit;text-decoration:none;">Revene</a> — Recovery console</h1>
+    <div class="sub">Predict early · recover failures · stopping rules + audit</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:18px;">
+    <a href="/" style="font-size:12px;color:var(--muted);text-decoration:none;font-family:'IBM Plex Mono',monospace;">← Landing</a>
+    <div class="status-pill">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">All banks healthy</span>
+    </div>
+  </div>
+</header>
+
+<section class="metrics">
+  <div class="metric">
+    <div class="metric-label">₹ Recovered (after fail)</div>
+    <div class="metric-value recovered mono" id="recovered">₹0</div>
+    <div class="metric-sub">Track 03 money-back metric</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">₹ Preempted (before fail)</div>
+    <div class="metric-value preempt mono" id="preempted">₹0</div>
+    <div class="metric-sub">Your unique predict lane</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">₹ Protected (smart route)</div>
+    <div class="metric-value safe mono" id="protected">₹0</div>
+    <div class="metric-sub" id="txn-count">0 transactions</div>
+  </div>
+  <div class="metric">
+    <div class="metric-label">Batch recovery rate</div>
+    <div class="metric-value risk mono" id="batch-rate">—</div>
+    <div class="metric-sub" id="batch-sub">Run a batch to measure</div>
+  </div>
+</section>
+
+<main>
+  <!-- LEFT: banks + judge button -->
+  <div class="col">
+    <div class="section">
+      <h2>Bank health</h2>
+      <div id="bank-list"></div>
+    </div>
+    <div class="section">
+      <h2>Prove the bar</h2>
+      <p class="muted" style="margin: 0 0 10px;">
+        Judges want measured money across a batch + stopping rules.
+        This runs recovery on ~40 at-risk cases.
+      </p>
+      <button class="batch-btn" id="batch-btn" onclick="runBatch()">▶ Run recovery batch</button>
+      <div class="batch-result" id="batch-result"></div>
+    </div>
+    <div class="section">
+      <h2>Stopping rules (always on)</h2>
+      <div class="muted">
+        • Max 3 attempts<br>
+        • Skip if amount &lt; ₹50<br>
+        • No blind retry during bank outage<br>
+        • ROI gate if success chance too low<br>
+        • Escalate to human, then stop
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: live feed -->
+  <div class="col">
+    <div class="section" style="display:flex; justify-content:space-between; align-items:baseline;">
+      <h2 style="margin:0;">Live payment + agent feed</h2>
+      <span class="muted" id="feed-count">connecting…</span>
+    </div>
+    <div class="ledger-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Amount</th>
+            <th>Bank</th>
+            <th>Route</th>
+            <th>Pay</th>
+            <th>Agent</th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT: at-risk queue + audit -->
+  <div class="col">
+    <div class="section" style="display:flex; justify-content:space-between; align-items:baseline;">
+      <h2 style="margin:0;">At-risk queue</h2>
+      <span class="muted" id="queue-count">0</span>
+    </div>
+    <div class="queue-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Case</th>
+            <th>Stage</th>
+            <th>Action</th>
+            <th>₹</th>
+          </tr>
+        </thead>
+        <tbody id="queue-body"></tbody>
+      </table>
+    </div>
+    <div class="section audit-box" id="audit-panel">
+      <h3>Audit trail</h3>
+      <div class="empty-hint">Click any at-risk row to see detect → diagnose → decide → outcome.</div>
+      <div id="audit-steps"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const BANKS = ["HDFC", "SBI", "ICICI", "Axis", "Kotak", "PNB"];
+  const bankListEl = document.getElementById("bank-list");
+
+  const isFile = window.location.protocol === "file:";
+  const backendUrl = isFile ? "http://localhost:5000" : window.location.origin;
+  const socket = typeof io !== 'undefined' ? (isFile ? io("http://localhost:5000") : io()) : null;
+
+  BANKS.forEach(b => {
+    const row = document.createElement("div");
+    row.className = "bank-row";
+    row.id = "bank-" + b;
+    row.innerHTML = `
+      <span>
+        <span class="dot" style="width:6px;height:6px;display:inline-block;margin-right:6px;"></span>
+        ${b}
+        <span class="muted" id="rate-${b}" style="margin-left:6px;">Healthy</span>
+      </span>
+      <button class="trigger-btn" onclick="triggerOutage('${b}')">simulate outage</button>
+    `;
+    bankListEl.appendChild(row);
+  });
+
+  function triggerOutage(bank) {
+    fetch(`${backendUrl}/trigger_outage/${bank}`).catch(console.error);
+  }
+
+  function money(n) {
+    return "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  }
+
+  function runBatch() {
+    const btn = document.getElementById("batch-btn");
+    const box = document.getElementById("batch-result");
+    btn.disabled = true;
+    btn.textContent = "Running batch…";
+    box.style.display = "block";
+    box.innerHTML = "<span class='muted'>Agent processing at-risk cases…</span>";
+
+    fetch(`${backendUrl}/api/run_recovery_batch?n=40`)
+      .then(r => r.json())
+      .then(showBatch)
+      .catch(err => {
+        box.innerHTML = "<span class='outcome-fail'>Batch failed. Is backend running?</span>";
+        console.error(err);
+      })
+      .finally(() => {
+        btn.disabled = false;
+        btn.textContent = "▶ Run recovery batch";
+      });
+  }
+
+  function showBatch(data) {
+    const box = document.getElementById("batch-result");
+    box.style.display = "block";
+    const rate = Math.round((data.recovery_rate || 0) * 100);
+    document.getElementById("batch-rate").textContent = rate + "%";
+    document.getElementById("batch-sub").textContent =
+      money(data.amount_won_back) + " of " + money(data.amount_at_risk) + " at risk";
+    document.getElementById("recovered").textContent = money(data.live_revenue_recovered);
+    document.getElementById("preempted").textContent = money(data.live_revenue_preempted);
+
+    box.innerHTML = `
+      <strong>Batch done</strong> (${data.batch_size} cases${data.seeded_failures ? ", " + data.seeded_failures + " seeded" : ""})<br>
+      At risk: <span class="mono">${money(data.amount_at_risk)}</span><br>
+      Recovered: <span class="mono outcome-success">${money(data.amount_recovered)}</span><br>
+      Preempted: <span class="mono" style="color:var(--preempt)">${money(data.amount_preempted)}</span><br>
+      Won back: <span class="mono outcome-success">${money(data.amount_won_back)}</span> (${rate}%)<br>
+      Stopped: ${data.cases_stopped} · Escalated: ${data.cases_escalated} · Recovered cases: ${data.cases_recovered}
+    `;
+    refreshQueue();
+  }
+
+  function refreshQueue() {
+    fetch(`${backendUrl}/api/at_risk?limit=30`)
+      .then(r => r.json())
+      .then(rows => {
+        const tbody = document.getElementById("queue-body");
+        tbody.innerHTML = "";
+        document.getElementById("queue-count").textContent = rows.length + " recent";
+        rows.forEach(ev => {
+          const tr = document.createElement("tr");
+          tr.className = "clickable";
+          tr.onclick = () => loadCase(ev.id);
+          const stageClass = ev.stage === "failed" ? "tag-failed" : "tag-degrading";
+          tr.innerHTML = `
+            <td class="mono">#${ev.id}<div class="muted">${ev.customer_id}</div></td>
+            <td><span class="tag ${stageClass}">${ev.stage}</span>
+              <div class="muted">${ev.root_cause}</div></td>
+            <td><span class="tag ${ev.status === 'recovered' ? 'tag-recover' : 'tag-method'}">${ev.status}</span>
+              <div class="muted">${ev.attempts} tries</div></td>
+            <td class="mono">${money(ev.amount_recovered || 0)}
+              <div class="muted">of ${money(ev.amount)}</div></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      })
+      .catch(() => {});
+  }
+
+  function loadCase(id) {
+    fetch(`${backendUrl}/api/case/${id}`)
+      .then(r => r.json())
+      .then(data => {
+        const panel = document.getElementById("audit-steps");
+        const ev = data.event;
+        let html = `
+          <div style="margin-bottom:10px;">
+            <strong>Case #${ev.id}</strong> · ${ev.customer_id}<br>
+            <span class="muted">${ev.stage} / ${ev.root_cause} / ${ev.status}</span><br>
+            <span class="mono">${money(ev.amount_recovered)} recovered of ${money(ev.amount)}</span>
+          </div>
+        `;
+        if (!data.audit.length) {
+          html += "<div class='empty-hint'>No audit steps yet.</div>";
+        } else {
+          data.audit.forEach(a => {
+            html += `
+              <div class="audit-step">
+                <div class="step-name">${a.step}</div>
+                <div>${a.detail}</div>
+                <div class="when">${a.created_at || ""}</div>
+              </div>
+            `;
+          });
+        }
+        panel.innerHTML = html;
+      });
+  }
+
+  let count = 0;
+
+  if (socket) {
+    socket.on("connect", () => {
+      document.getElementById("feed-count").textContent = "live";
+      refreshQueue();
+    });
+
+    socket.on("batch_complete", showBatch);
+
+    socket.on("transaction", (data) => {
+      count++;
+      document.getElementById("recovered").textContent = money(data.revenue_recovered);
+      document.getElementById("preempted").textContent = money(data.revenue_preempted);
+      document.getElementById("protected").textContent = money(data.revenue_protected);
+      document.getElementById("txn-count").textContent = data.transactions_processed + " transactions";
+      document.getElementById("feed-count").textContent = count + " shown";
+
+      BANKS.forEach(b => {
+        const row = document.getElementById("bank-" + b);
+        const rateEl = document.getElementById("rate-" + b);
+        const isOutage = data.active_outage_banks.includes(b);
+        row.classList.toggle("outage", isOutage);
+        const dot = row.querySelector(".dot");
+        dot.style.background = isOutage ? "var(--outage)" : "var(--safe)";
+        if (rateEl) {
+          rateEl.textContent = isOutage ? "Outage" : "Healthy";
+          rateEl.style.color = isOutage ? "var(--outage)" : "var(--muted)";
+        }
+      });
+
+      const anyOutage = data.active_outage_banks.length > 0;
+      document.getElementById("status-dot").classList.toggle("outage", anyOutage);
+      document.getElementById("status-text").textContent = anyOutage
+        ? `Outage: ${data.active_outage_banks.join(", ")}`
+        : "All banks healthy";
+
+      let agentCell = "<span class='muted'>—</span>";
+      if (data.recovery) {
+        const r = data.recovery;
+        const laneClass = r.lane === "preempt" ? "tag-preempt" : (r.lane === "recover" ? "tag-recover" : "tag-failed");
+        const stageClass = r.stage === "failed" ? "tag-failed" : "tag-degrading";
+        agentCell = `
+          <span class="tag ${stageClass}">${r.stage}</span>
+          <span class="tag ${laneClass}">${r.action || r.lane}</span>
+          <div class="muted">${r.success ? "won " + money(r.amount_recovered) : "no win yet"} · #${r.event_id}</div>
+        `;
+      }
+
+      const tbody = document.getElementById("ledger-body");
+      const tr = document.createElement("tr");
+      if (data.recovery) {
+        tr.className = "clickable";
+        tr.onclick = () => loadCase(data.recovery.event_id);
+      }
+      tr.innerHTML = `
+        <td class="mono">${data.customer_id}</td>
+        <td class="mono">${money(data.amount)}</td>
+        <td>${data.bank}</td>
+        <td><span class="tag tag-method">${data.recommended_method}</span></td>
+        <td class="${data.success ? 'outcome-success' : 'outcome-fail'}">${data.success ? 'ok' : 'fail'}</td>
+        <td>${agentCell}</td>
+      `;
+      tbody.insertBefore(tr, tbody.firstChild);
+      while (tbody.rows.length > 35) tbody.deleteRow(-1);
+
+      if (data.recovery && count % 4 === 0) refreshQueue();
+    });
+  } else {
+    document.getElementById("feed-count").textContent = "socket missing";
+  }
+
+  // initial stats
+  fetch(`${backendUrl}/api/db_stats`).then(r => r.json()).then(s => {
+    if (s.live_revenue_recovered != null) document.getElementById("recovered").textContent = money(s.live_revenue_recovered);
+    if (s.live_revenue_preempted != null) document.getElementById("preempted").textContent = money(s.live_revenue_preempted);
+    if (s.live_revenue_protected != null) document.getElementById("protected").textContent = money(s.live_revenue_protected);
+  }).catch(() => {});
+  refreshQueue();
+</script>
+</body>
+</html>
