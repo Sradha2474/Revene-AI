@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Data / model artifacts (regenerate locally)
+data/*.db
+data/*.csv
+models/*.json
+models/*.pkl
+models/*.joblib
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Keep assets
+!frontend/assets/
