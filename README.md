@@ -12,7 +12,7 @@
 [![Audit Chain](https://img.shields.io/badge/Security-SHA--256%20Hash%20Chained-emerald?style=for-the-badge&logo=shield)](https://github.com)
 [![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)](LICENSE)
 
-[**Live Interactive Demo**](http://localhost:5173/demo) · [**Architecture Documentation**](#-architecture--5-stage-pipeline) · [**Loom Video Script**](#-judge-loom-demo-video-script-3-minutes) · [**Quickstart**](#-quickstart-in-2-minutes)
+[**Live Interactive Demo**](http://localhost:5173/demo) · [**Architecture Documentation**](#-architecture--5-stage-pipeline) · [**Quickstart**](#-quickstart-in-2-minutes)
 
 </div>
 
@@ -198,49 +198,6 @@ When the payment completes:
 - *(For local testing, expose your port 5000 via ngrok: `ngrok http 5000` and configure the webhook URL in Razorpay Dashboard → Webhooks with events `payment.failed` and `payment.captured`)*.
 - Revene validates the HMAC SHA-256 signature using `RAZORPAY_WEBHOOK_SECRET`.
 - The recovered transaction is marked verified, the **₹ Recovered** KPI updates, and the event is cryptographically recorded in the SHA-256 audit ledger.
-
----
-
-## 🎬 Judge Loom Demo Video Script (3 Minutes)
-
-Use this step-by-step timed script to present Revene to the Razorpay AI Buildathon judges:
-
-### `0:00 - 0:30` | The Hook & The Broken Status Quo
-- **Screen**: Start on the Landing Page (`http://localhost:5173/`) showcasing the airy Watermelon UI Hero-35 section.
-- **Speaker**:
-  > *"Hi judges! In India's fast-moving payment ecosystem, millions in GMV are lost every day when bank servers flap, UPI gateways time out, and customers abandon broken checkout pages.*
-  > *Existing recovery tools make a fatal mistake: they only wake up after the transaction is dead and the buyer has abandoned cart.*
-  > *Meet **Revene** — the predictive, two-lane autonomous revenue recovery engine built specifically for Razorpay and high-scale Indian merchants."*
-
-### `0:30 - 1:10` | The Two-Lane Architecture & Interactive Sandbox
-- **Screen**: Scroll down to the **Live Interactive Revenue Sandbox** (`#simulator`).
-- **Action**: Click the **"Trigger Bank Flap"** button on the Preempt Lane tab.
-- **Speaker**:
-  > *"Revene works across two distinct lanes. Let's see Lane 1 — Preempt. While a customer is checking out, our background telemetry detects that HDFC UPI failure rates spiked, pushing its Z-score above 3.0.*
-  > *Before the buyer even clicks pay, Revene dynamically switches the checkout route to Razorpay ICICI FastPath in under 45ms. Zero drops, zero checkout abandonment.*
-  > *Now switch to the Recover Lane tab. If a transaction does fail, Revene doesn't blindly spam SMS reminders. It evaluates customer retry fatigue, failure root causes, and ROI policy gates."*
-
-### `1:10 - 2:00` | The Mission-Control Console & Bank Outage Trigger
-- **Screen**: Click **"Open Live Demo"** to navigate to `/demo`.
-- **Action**: Show the top KPI bar (₹ Recovered, ₹ Preempted, Route Resilience, Hash Audit Verified).
-- **Action**: In the **Bank Outages & Route Health** panel, click **"Simulate Outage"** on **SBI** or **HDFC**.
-- **Speaker**:
-  > *"Now let's step into the merchant mission-control console. Look at our Bank Health monitor. When I trigger a simulated outage on HDFC, watch the live at-risk transaction queue populate in real time via WebSockets.*
-  > *Click on 'Run Recovery Batch'. In seconds, our autonomous agent evaluates 40 queued transactions. It wins back eligible GMV while strictly enforcing bounded policy rules."*
-
-### `2:00 - 2:40` | Razorpay Test Mode & Stopping Rules in Action
-- **Screen**: Click on an at-risk transaction in the table to open the **Case Drawer**.
-- **Action**: Click **"Create Razorpay Test Payment Link"**. Show the generated `rzp.io` short link.
-- **Speaker**:
-  > *"Notice this case. Revene evaluated it as GREEN policy. With our Razorpay Test Mode integration, it generates an authentic Razorpay Smart Payment Link.*
-  > *Crucially, we follow an Honest Accounting Principle: this money is NOT counted as recovered until Razorpay's HMAC-signed `payment.captured` webhook arrives.*
-  > *And notice transactions with RED policy lights: if a customer has already retried 3 times, or if the failure is a hard authentication rejection, Revene enforces a hard stop. We protect merchant reputation and avoid spamming customers."*
-
-### `2:40 - 3:00` | Cryptographic SHA-256 Audit & Closing
-- **Screen**: Scroll to the **Cryptographic Audit Trail** at the bottom of the console.
-- **Speaker**:
-  > *"Finally, every decision, Z-score reading, and payout recovery is cryptographically linked in a SHA-256 tamper-evident blockchain ledger for regulatory and merchant compliance.*
-  > *Revene transforms revenue recovery from a reactive afterthought into an autonomous, proactive profit center for Razorpay. Thank you!"*
 
 ---
 
