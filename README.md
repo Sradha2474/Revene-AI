@@ -30,7 +30,7 @@ Every year, Indian merchants lose millions in GMV to **silent bank outages**, fl
 
 ## 📸 Visual Showcase
 
-### 1. Watermelon UI Hero-35 Design
+### 1. Landing Hero
 > Cinematic, airy, high-contrast dark aesthetic with staggered spring entrance, floating frosted-glass navigation, and minimalist real-time stats telemetry.
 
 ![Revene Airy Hero](docs/screenshots/hero-section.png)
