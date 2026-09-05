@@ -6,27 +6,28 @@
 <title>Revene — Predictive revenue recovery</title>
 <meta name="description" content="Revene detects payments that are about to fail, intervenes early, and recovers lost revenue with bounded workflows and a full audit trail.">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
   :root {
-    /* Softer, eyes-friendly: charcoal + steel teal (not electric blue) */
-    --bg: #0C1118;
-    --bg-2: #121A24;
-    --surface: #172030;
-    --text: #E8EEF4;
-    --muted: #8A97A8;
-    --line: rgba(232, 238, 244, 0.08);
-    --accent: #6BA3B5;        /* soft steel */
-    --accent-2: #4F8F9E;      /* deeper teal-steel */
-    --accent-soft: rgba(107, 163, 181, 0.14);
-    --ok: #5EC4A0;
-    --warn: #D4A574;
+    --bg: #07090D;
+    --bg-elev: #0E131A;
+    --surface: #141B24;
+    --text: #F3F5F7;
+    --muted: #8F9AAB;
+    --line: rgba(243, 245, 247, 0.08);
+    /* Soft luminous accent — trendy, not eye-burn electric */
+    --accent: #7EC8C3;
+    --accent-2: #5AAEAE;
+    --accent-dim: rgba(126, 200, 195, 0.12);
+    --accent-line: rgba(126, 200, 195, 0.35);
+    --ok: #6BCF9B;
+    --mist: #9BB0C7;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
-    font-family: 'DM Sans', sans-serif;
+    font-family: 'Outfit', sans-serif;
     background: var(--bg);
     color: var(--text);
     -webkit-font-smoothing: antialiased;
@@ -34,401 +35,571 @@
     overflow-x: hidden;
   }
 
-  .field {
+  /* Living background */
+  .aurora {
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    background:
-      radial-gradient(ellipse 80% 50% at 90% -5%, rgba(107, 163, 181, 0.16), transparent 55%),
-      radial-gradient(ellipse 45% 35% at 0% 80%, rgba(79, 143, 158, 0.1), transparent 50%),
-      var(--bg);
+    background: var(--bg);
+    overflow: hidden;
   }
-  .field::before {
-    content: "";
+  .aurora .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.55;
+    animation: drift 18s ease-in-out infinite;
+  }
+  .aurora .orb-a {
+    width: 55vw; height: 55vw;
+    top: -20%; right: -10%;
+    background: radial-gradient(circle, rgba(126, 200, 195, 0.28), transparent 70%);
+  }
+  .aurora .orb-b {
+    width: 40vw; height: 40vw;
+    bottom: 10%; left: -15%;
+    background: radial-gradient(circle, rgba(155, 176, 199, 0.18), transparent 70%);
+    animation-delay: -6s;
+  }
+  .aurora .orb-c {
+    width: 30vw; height: 30vw;
+    top: 45%; right: 20%;
+    background: radial-gradient(circle, rgba(90, 174, 174, 0.12), transparent 70%);
+    animation-delay: -11s;
+  }
+  .aurora .grid {
     position: absolute;
     inset: 0;
-    opacity: 0.35;
     background-image:
       linear-gradient(var(--line) 1px, transparent 1px),
       linear-gradient(90deg, var(--line) 1px, transparent 1px);
-    background-size: 72px 72px;
-    mask-image: radial-gradient(ellipse 70% 60% at 75% 20%, #000 15%, transparent 70%);
+    background-size: 80px 80px;
+    mask-image: radial-gradient(ellipse 80% 70% at 60% 20%, #000 10%, transparent 72%);
+    opacity: 0.7;
+    animation: gridDrift 50s linear infinite;
+  }
+  @keyframes drift {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-3%, 4%) scale(1.06); }
+  }
+  @keyframes gridDrift {
+    from { background-position: 0 0, 0 0; }
+    to { background-position: 80px 80px, 80px 80px; }
   }
 
   .page { position: relative; z-index: 1; }
 
+  /* Nav */
   nav {
-    max-width: 1180px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 20px 24px;
+    padding: 22px 28px;
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
   .logo {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: 1.2rem;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.25rem;
     letter-spacing: -0.04em;
     color: var(--text);
     text-decoration: none;
   }
-  .logo span { color: var(--accent); }
-  .nav-right { display: flex; align-items: center; gap: 22px; }
-  .nav-right a {
+  .logo em { font-style: normal; color: var(--accent); }
+  .nav-links { display: flex; align-items: center; gap: 28px; }
+  .nav-links a {
     font-size: 0.875rem;
     font-weight: 500;
     color: var(--muted);
     text-decoration: none;
+    transition: color 0.2s;
   }
-  .nav-right a:hover { color: var(--text); }
-  .nav-cta {
-    color: var(--text) !important;
-    border: 1px solid rgba(232,238,244,0.16);
-    padding: 9px 14px;
+  .nav-links a:hover { color: var(--text); }
+  .nav-pill {
+    border: 1px solid var(--accent-line);
+    padding: 9px 16px;
     border-radius: 999px;
+    color: var(--text) !important;
+    background: var(--accent-dim);
+    transition: background 0.2s, border-color 0.2s, transform 0.2s !important;
   }
-  .nav-cta:hover {
-    border-color: var(--accent);
-    background: var(--accent-soft);
+  .nav-pill:hover {
+    background: rgba(126, 200, 195, 0.22) !important;
+    transform: translateY(-1px);
   }
 
-  /* Rolling Revene marquee */
+  /* Marquee */
   .marquee-wrap {
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-    background: rgba(18, 26, 36, 0.65);
+    border-block: 1px solid var(--line);
+    background: rgba(14, 19, 26, 0.55);
+    backdrop-filter: blur(8px);
     overflow: hidden;
-    padding: 14px 0;
+    padding: 12px 0;
   }
   .marquee {
     display: flex;
     width: max-content;
-    animation: marquee 28s linear infinite;
-    gap: 0;
+    animation: marquee 32s linear infinite;
   }
   .marquee span {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Syne', sans-serif;
     font-weight: 600;
-    font-size: 0.95rem;
-    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--muted);
-    padding: 0 28px;
+    padding: 0 22px;
     white-space: nowrap;
   }
-  .marquee span em {
-    font-style: normal;
-    color: var(--accent);
-  }
-  .marquee span.dot { color: rgba(107, 163, 181, 0.45); padding: 0 4px; }
+  .marquee .hi { color: var(--accent); }
+  .marquee .sep { color: rgba(126, 200, 195, 0.35); padding: 0 2px; }
   @keyframes marquee {
     from { transform: translateX(0); }
     to { transform: translateX(-50%); }
   }
 
+  /* Hero — one composition */
   .hero {
-    max-width: 1180px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 48px 24px 64px;
+    padding: 56px 28px 72px;
     display: grid;
-    grid-template-columns: 1.05fr 0.95fr;
-    gap: 40px;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 48px;
     align-items: center;
-    min-height: calc(100vh - 140px);
+    min-height: calc(100vh - 130px);
   }
 
+  /* FIX: never wrap "Revene" — last letter was dropping because each letter was inline-block */
   .hero-brand {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: clamp(3.6rem, 9vw, 6.2rem);
-    letter-spacing: -0.06em;
-    line-height: 0.9;
-    margin-bottom: 22px;
-    opacity: 0;
-    animation: rise 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards 0.05s;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.75rem, 6.5vw, 5.25rem);
+    letter-spacing: -0.055em;
+    line-height: 1;
+    margin-bottom: 28px;
+    white-space: nowrap;
+    overflow: hidden; /* mask for slide-up reveal */
+    width: max-content;
+    max-width: 100%;
   }
-  .hero-brand .roll {
+  .hero-brand .brand-track {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    will-change: transform;
+    transform: translateY(110%);
+    animation: brandRise 1.05s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+  }
+  .hero-brand .letter {
     display: inline-block;
-    color: var(--accent);
-    animation: brandPulse 3.5s ease-in-out infinite;
+    flex-shrink: 0;
+    opacity: 0;
+    transform: translateY(12px);
+    animation: letterSoft 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
-  @keyframes brandPulse {
-    0%, 100% { opacity: 1; filter: brightness(1); }
-    50% { opacity: 0.82; filter: brightness(1.15); }
+  .hero-brand .accent-word { color: var(--accent); }
+  @keyframes brandRise {
+    to { transform: translateY(0); }
+  }
+  @keyframes letterSoft {
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .hero h1 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: clamp(1.3rem, 2.3vw, 1.7rem);
-    letter-spacing: -0.03em;
-    line-height: 1.22;
-    max-width: 16ch;
-    margin-bottom: 14px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+    letter-spacing: -0.035em;
+    line-height: 1.2;
+    max-width: 15ch;
+    margin-bottom: 16px;
     opacity: 0;
-    animation: rise 0.85s ease forwards 0.18s;
+    animation: rise 0.8s ease forwards 0.55s;
   }
   .hero-support {
-    font-size: 1.02rem;
+    font-size: 1.05rem;
+    font-weight: 300;
     color: var(--muted);
-    max-width: 36ch;
-    margin-bottom: 28px;
+    max-width: 34ch;
+    margin-bottom: 36px;
     opacity: 0;
-    animation: rise 0.85s ease forwards 0.3s;
+    animation: rise 0.8s ease forwards 0.68s;
   }
   .hero-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px 18px;
+    gap: 14px 20px;
     align-items: center;
     opacity: 0;
-    animation: rise 0.85s ease forwards 0.42s;
+    animation: rise 0.8s ease forwards 0.8s;
   }
 
-  .btn-primary {
+  .btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    background: var(--accent-2);
-    color: #fff;
-    text-decoration: none;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
+    gap: 10px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
     font-size: 0.95rem;
-    padding: 14px 22px;
-    border-radius: 10px;
-    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+    padding: 15px 26px;
+    border-radius: 12px;
+    transition: transform 0.2s, box-shadow 0.25s, background 0.2s;
   }
-  .btn-primary:hover {
-    background: #3F7A88;
-    transform: translateY(-1px);
-    box-shadow: 0 10px 28px rgba(79, 143, 158, 0.28);
+  .btn-main {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #061016;
+    box-shadow: 0 8px 32px rgba(126, 200, 195, 0.25);
   }
+  .btn-main:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 40px rgba(126, 200, 195, 0.35);
+  }
+  .btn-main .arr { transition: transform 0.2s; }
+  .btn-main:hover .arr { transform: translateX(4px); }
   .btn-ghost {
     color: var(--muted);
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 0.95rem;
-    border-bottom: 1px solid rgba(232,238,244,0.14);
-    padding-bottom: 2px;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-bottom: 1px solid rgba(243,245,247,0.15);
+    border-radius: 0;
+    font-weight: 600;
   }
   .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
 
-  .panel {
-    background: rgba(23, 32, 48, 0.88);
+  /* Glass metrics panel */
+  .glass {
+    position: relative;
+    background: rgba(20, 27, 36, 0.72);
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: 20px;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
     overflow: hidden;
     opacity: 0;
-    animation: rise 0.95s ease forwards 0.28s;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    animation: rise 1s cubic-bezier(0.22, 1, 0.36, 1) forwards 0.35s;
+    box-shadow:
+      0 0 0 1px rgba(126, 200, 195, 0.06),
+      0 30px 80px rgba(0, 0, 0, 0.45);
   }
-  .panel-bar {
+  .glass::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-line), transparent);
+  }
+  .glass-top {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 12px 16px;
+    gap: 7px;
+    padding: 14px 18px;
     border-bottom: 1px solid var(--line);
-    background: rgba(255,255,255,0.02);
   }
-  .panel-bar i {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: rgba(255,255,255,0.14);
-    display: block;
+  .glass-top i {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: rgba(255,255,255,0.12);
   }
-  .panel-bar span {
-    margin-left: 8px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--muted);
-  }
-  .panel-body { padding: 26px; }
-  .eyebrow {
+  .glass-top span {
+    margin-left: 6px;
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.68rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 10px;
-  }
-  .big-num {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: clamp(2.6rem, 4.5vw, 3.4rem);
-    letter-spacing: -0.05em;
-    line-height: 1;
-    margin-bottom: 8px;
-    font-variant-numeric: tabular-nums;
-  }
-  .big-num .cur { color: var(--accent); margin-right: 2px; }
-  .big-num .digit {
-    display: inline-block;
-    min-width: 0.55em;
-    text-align: center;
-  }
-  .big-hint { font-size: 0.88rem; color: var(--muted); margin-bottom: 22px; }
-
-  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
-  .stat {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 14px;
-  }
-  .stat .k {
-    font-size: 0.68rem;
     color: var(--muted);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.04em;
   }
-  .stat .v { font-family: 'JetBrains Mono', monospace; font-size: 1.02rem; font-variant-numeric: tabular-nums; }
-  .stat .v.ok { color: var(--ok); }
-
-  /* Photo strip */
-  .visuals {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 0 24px 72px;
-    display: grid;
-    grid-template-columns: 1.2fr 0.8fr;
-    gap: 16px;
-  }
-  .visuals figure {
-    margin: 0;
-    border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    position: relative;
-    background: var(--surface);
-  }
-  .visuals img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    min-height: 220px;
-    max-height: 320px;
-    transition: transform 0.6s ease;
-  }
-  .visuals figure:hover img { transform: scale(1.03); }
-  .visuals figcaption {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    padding: 16px 18px;
-    background: linear-gradient(transparent, rgba(12, 17, 24, 0.92));
-    font-size: 0.85rem;
-    color: var(--text);
-    font-weight: 500;
-  }
-  .visuals figcaption span {
-    display: block;
-    font-size: 0.75rem;
-    color: var(--muted);
-    font-weight: 400;
-    margin-top: 2px;
-  }
-
-  .section {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 80px 24px;
-    border-top: 1px solid var(--line);
-  }
-  .section-kicker {
+  .glass-body { padding: 28px 26px 24px; }
+  .live-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--accent);
     margin-bottom: 14px;
   }
-  .section h2 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 700;
-    font-size: clamp(1.8rem, 3.2vw, 2.5rem);
-    letter-spacing: -0.04em;
-    line-height: 1.08;
-    max-width: 14ch;
-    margin-bottom: 12px;
+  .live-dot::before {
+    content: "";
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(126, 200, 195, 0.5);
+    animation: pulse 2s infinite;
   }
-  .section .lead {
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(126, 200, 195, 0.45); }
+    70% { box-shadow: 0 0 0 8px rgba(126, 200, 195, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(126, 200, 195, 0); }
+  }
+
+  .ticker {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2.8rem, 5vw, 3.8rem);
+    letter-spacing: -0.05em;
+    line-height: 1;
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+  }
+  .ticker .cur { color: var(--accent); margin-right: 4px; }
+  .ticker #hero-won {
+    display: inline-block;
+    transition: filter 0.25s ease, transform 0.25s ease;
+  }
+  .ticker #hero-won.tick {
+    filter: blur(1.5px);
+    transform: translateY(-2px);
+  }
+  .ticker-sub {
+    font-size: 0.9rem;
     color: var(--muted);
-    font-size: 1.02rem;
-    max-width: 44ch;
-    margin-bottom: 40px;
+    font-weight: 300;
+    margin-bottom: 26px;
+  }
+
+  .mini-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .mini {
+    padding: 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--line);
+  }
+  .mini .k {
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .mini .v {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.3s ease;
+  }
+  .mini .v.ok { color: var(--ok); }
+  .mini .v.flash {
+    animation: numFlash 0.45s ease;
+  }
+  @keyframes numFlash {
+    0% { opacity: 0.4; transform: translateY(4px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Full-bleed image story — pro motion */
+  .story {
+    position: relative;
+    max-width: 1240px;
+    margin: 0 auto 24px;
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: 1.35fr 0.65fr;
+    gap: 14px;
+  }
+  .shot {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    min-height: 280px;
+    background: var(--surface);
+    clip-path: inset(8% 8% 8% 8% round 20px);
+    opacity: 0;
+    transform: translateY(28px);
+    transition:
+      clip-path 1.1s cubic-bezier(0.16, 1, 0.3, 1),
+      opacity 0.8s ease,
+      transform 0.8s ease;
+  }
+  .shot.in {
+    clip-path: inset(0 0 0 0 round 20px);
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .shot:nth-child(2) { transition-delay: 0.12s; }
+  .shot img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    min-height: 280px;
+    max-height: 380px;
+    transform: scale(1.12);
+    transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .shot.in img {
+    animation: kenBurns 18s ease-in-out infinite alternate;
+  }
+  .shot:hover img {
+    animation-play-state: paused;
+    transform: scale(1.06);
+  }
+  @keyframes kenBurns {
+    from { transform: scale(1.08) translate(0, 0); }
+    to { transform: scale(1.16) translate(-1.5%, -1%); }
+  }
+  .shot .cap {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 28px 24px 22px;
+    background: linear-gradient(transparent, rgba(7, 9, 13, 0.92));
+    transform: translateY(12px);
+    opacity: 0;
+    transition: opacity 0.6s ease 0.35s, transform 0.6s ease 0.35s;
+  }
+  .shot.in .cap {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .shot .cap strong {
+    display: block;
+    font-family: 'Syne', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 4px;
+  }
+  .shot .cap span {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-weight: 300;
+  }
+  .shot-tall { min-height: 100%; }
+  .shot-tall img { max-height: none; min-height: 100%; position: absolute; inset: 0; }
+
+  /* Sections */
+  .section {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 100px 28px;
+    border-top: 1px solid var(--line);
+  }
+  .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .section h2 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: clamp(2rem, 4vw, 3rem);
+    letter-spacing: -0.045em;
+    line-height: 1.02;
+    max-width: 12ch;
+    margin-bottom: 14px;
+  }
+  .lead {
+    color: var(--muted);
+    font-weight: 300;
+    font-size: 1.08rem;
+    max-width: 42ch;
+    margin-bottom: 48px;
   }
 
   .lanes {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1px;
-    background: var(--line);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
+    gap: 12px;
   }
   .lane {
-    background: var(--bg-2);
-    padding: 28px 24px;
-    min-height: 180px;
+    padding: 32px 28px;
+    border-radius: 18px;
+    background: rgba(20, 27, 36, 0.65);
+    border: 1px solid var(--line);
+    transition: border-color 0.25s, transform 0.25s, background 0.25s;
+  }
+  .lane:hover {
+    border-color: var(--accent-line);
+    transform: translateY(-3px);
+    background: rgba(20, 27, 36, 0.9);
   }
   .lane .n {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     color: var(--accent);
-    margin-bottom: 16px;
+    margin-bottom: 22px;
   }
   .lane h3 {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 1.2rem;
-    font-weight: 600;
+    font-family: 'Syne', sans-serif;
+    font-size: 1.3rem;
+    font-weight: 700;
     letter-spacing: -0.03em;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
-  .lane p { color: var(--muted); font-size: 0.9rem; max-width: 26ch; }
+  .lane p {
+    color: var(--muted);
+    font-weight: 300;
+    font-size: 0.95rem;
+    max-width: 24ch;
+  }
 
   .split {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 48px;
+    grid-template-columns: 1fr 1.05fr;
+    gap: 56px;
     align-items: start;
   }
   .rules { list-style: none; }
   .rules li {
     display: grid;
-    grid-template-columns: 36px 1fr;
+    grid-template-columns: 44px 1fr;
     gap: 12px;
-    padding: 16px 0;
+    padding: 18px 0;
     border-bottom: 1px solid var(--line);
-    font-size: 0.98rem;
+    font-size: 1.02rem;
+    align-items: baseline;
   }
   .rules .idx {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     color: var(--accent);
   }
 
-  .cta-block {
-    background: linear-gradient(135deg, rgba(107, 163, 181, 0.14), rgba(79, 143, 158, 0.04));
-    border: 1px solid rgba(107, 163, 181, 0.28);
-    border-radius: 18px;
-    padding: 40px;
+  .cta-band {
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid var(--accent-line);
+    padding: 56px 48px;
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: 24px;
+    gap: 28px;
+    background:
+      linear-gradient(135deg, rgba(126, 200, 195, 0.14), rgba(14, 19, 26, 0.4)),
+      var(--bg-elev);
   }
-  .cta-block h2 { max-width: 12ch; margin: 0 0 8px; }
-  .cta-block p { color: var(--muted); margin: 0; max-width: 34ch; }
+  .cta-band h2 {
+    max-width: 11ch;
+    margin: 0 0 10px;
+  }
+  .cta-band p {
+    color: var(--muted);
+    font-weight: 300;
+    margin: 0;
+    max-width: 32ch;
+  }
 
   footer {
-    max-width: 1180px;
+    max-width: 1240px;
     margin: 0 auto;
-    padding: 24px;
+    padding: 28px;
     border-top: 1px solid var(--line);
     display: flex;
     justify-content: space-between;
@@ -439,68 +610,91 @@
   footer a:hover { color: var(--text); }
 
   @keyframes rise {
-    from { opacity: 0; transform: translateY(18px); }
+    from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
   }
 
-  @media (max-width: 900px) {
-    .hero { grid-template-columns: 1fr; min-height: auto; }
-    .visuals { grid-template-columns: 1fr; }
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+  }
+  .reveal.in {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 920px) {
+    .hero {
+      grid-template-columns: 1fr;
+      min-height: auto;
+      padding-top: 36px;
+      gap: 36px;
+    }
+    .hero-brand {
+      font-size: clamp(2.6rem, 14vw, 4rem);
+    }
+    .story { grid-template-columns: 1fr; }
+    .shot-tall img { position: relative; max-height: 280px; }
     .lanes { grid-template-columns: 1fr; }
     .split { grid-template-columns: 1fr; gap: 28px; }
-    .nav-right a:not(.nav-cta) { display: none; }
+    .nav-links a:not(.nav-pill) { display: none; }
+    .cta-band { padding: 36px 24px; }
   }
 </style>
 </head>
 <body>
-  <div class="field" aria-hidden="true"></div>
+  <div class="aurora" aria-hidden="true">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="orb orb-c"></div>
+    <div class="grid"></div>
+  </div>
 
   <div class="page">
     <nav>
-      <a class="logo" href="/">Rev<span>ene</span></a>
-      <div class="nav-right">
+      <a class="logo" href="/">Rev<em>ene</em></a>
+      <div class="nav-links">
         <a href="#product">Product</a>
         <a href="#controls">Controls</a>
-        <a class="nav-cta" href="/demo">Open console</a>
+        <a class="nav-pill" href="/demo">Open console</a>
       </div>
     </nav>
 
     <div class="marquee-wrap" aria-hidden="true">
-      <div class="marquee" id="marquee">
-        <!-- duplicated in JS for seamless loop -->
-      </div>
+      <div class="marquee" id="marquee"></div>
     </div>
 
     <header class="hero">
       <div>
-        <p class="hero-brand">Rev<span class="roll">ene</span></p>
+        <p class="hero-brand" id="brand" aria-label="Revene"></p>
         <h1>Find revenue slipping away. Win it back.</h1>
         <p class="hero-support">
-          Predictive recovery for payments that degrade, fail, or get abandoned —
-          with bounded interventions and a full audit trail.
+          The predictive recovery agent that smells failing payments early,
+          intervenes with bounds, and proves every rupee in the audit trail.
         </p>
         <div class="hero-actions">
-          <a class="btn-primary" href="/demo">Open live console →</a>
-          <a class="btn-ghost" href="#product">How it works</a>
+          <a class="btn btn-main" href="/demo">Open live console <span class="arr">→</span></a>
+          <a class="btn btn-ghost" href="#product">See the loop</a>
         </div>
       </div>
 
-      <aside class="panel" aria-label="Live recovery metrics">
-        <div class="panel-bar">
+      <aside class="glass" aria-label="Live recovered revenue">
+        <div class="glass-top">
           <i></i><i></i><i></i>
-          <span>revene / console</span>
+          <span>revene.app / live</span>
         </div>
-        <div class="panel-body">
-          <div class="eyebrow">Live · won back</div>
-          <div class="big-num"><span class="cur">₹</span><span id="hero-won">0</span></div>
-          <p class="big-hint" id="hero-meta">Rolling total from the recovery agent</p>
-          <div class="stats">
-            <div class="stat">
-              <div class="k">Recovered</div>
+        <div class="glass-body">
+          <div class="live-dot">Live recovery</div>
+          <div class="ticker"><span class="cur">₹</span><span id="hero-won">0</span></div>
+          <p class="ticker-sub" id="hero-meta">Rolling total · agent online</p>
+          <div class="mini-grid">
+            <div class="mini">
+              <div class="k">After fail</div>
               <div class="v ok" id="sig-recovered">₹0</div>
             </div>
-            <div class="stat">
-              <div class="k">Preempted</div>
+            <div class="mini">
+              <div class="k">Before fail</div>
               <div class="v" id="sig-preempted">₹0</div>
             </div>
           </div>
@@ -508,57 +702,59 @@
       </aside>
     </header>
 
-    <section class="visuals" aria-label="Product atmosphere">
-      <figure>
-        <img src="/assets/revene-hero-desk.png" alt="Modern checkout moment on a desk" width="1200" height="675" loading="lazy">
-        <figcaption>
-          Catch the fail at the moment it happens
-          <span>Before the customer abandons checkout</span>
-        </figcaption>
+    <section class="story">
+      <figure class="shot">
+        <img src="/assets/revene-hero-desk.png" alt="Checkout moment on a modern desk" width="1200" height="675" loading="eager">
+        <div class="cap">
+          <strong>Intervene at the edge of failure</strong>
+          <span>Before the customer abandons — while the payment is still degrading</span>
+        </div>
       </figure>
-      <figure>
-        <img src="/assets/revene-flow-abstract.png" alt="Abstract signal of revenue recovery" width="1200" height="675" loading="lazy">
-        <figcaption>
-          Close the loop
-          <span>Detect → decide → recover → audit</span>
-        </figcaption>
+      <figure class="shot shot-tall">
+        <img src="/assets/revene-flow-abstract.png" alt="Abstract recovery signal" width="800" height="1000" loading="lazy">
+        <div class="cap">
+          <strong>Close the loop</strong>
+          <span>Detect → decide → recover</span>
+        </div>
       </figure>
     </section>
 
     <section class="section" id="product">
-      <div class="section-kicker">Product</div>
-      <h2>Detect. Decide. Recover.</h2>
-      <p class="lead">
-        Two lanes: save the payment while it is still degrading,
-        then recover what already failed — with hard stop rules.
-      </p>
-      <div class="lanes">
+      <div class="reveal">
+        <div class="kicker">The loop</div>
+        <h2>Detect. Decide. Recover.</h2>
+        <p class="lead">
+          Not another reminder bot. Two lanes: save money while the payment
+          is sick, then win back what already failed.
+        </p>
+      </div>
+      <div class="lanes reveal">
         <article class="lane">
           <div class="n">01</div>
           <h3>Sense the slip</h3>
-          <p>ML success odds and live bank health flag risk before the customer leaves.</p>
+          <p>ML odds + live bank health catch risk before the customer is gone.</p>
         </article>
         <article class="lane">
           <div class="n">02</div>
-          <h3>One intervention</h3>
-          <p>Switch method, smart retry, collect link, or escalate — never unbounded spam.</p>
+          <h3>One clean action</h3>
+          <p>Switch, smart retry, collect link, or escalate — never unbounded spam.</p>
         </article>
         <article class="lane">
           <div class="n">03</div>
-          <h3>Measure the ₹</h3>
-          <p>Batch view: amount at risk versus amount won back, every step audited.</p>
+          <h3>Prove the ₹</h3>
+          <p>Batch view of at-risk vs won-back, with every step in the audit.</p>
         </article>
       </div>
     </section>
 
     <section class="section" id="controls">
-      <div class="split">
+      <div class="split reveal">
         <div>
-          <div class="section-kicker">Controls</div>
+          <div class="kicker">Controls</div>
           <h2>Bounded by design.</h2>
           <p class="lead" style="margin-bottom:0;">
-            Stopping rules finance teams can trust —
-            every action explainable in the audit trail.
+            Finance-grade stopping rules so recovery stays trusted —
+            every decision readable in the trail.
           </p>
         </div>
         <ul class="rules">
@@ -571,13 +767,13 @@
       </div>
     </section>
 
-    <section class="section" style="padding-top:32px; border-top:none;">
-      <div class="cta-block">
+    <section class="section" style="border-top:none; padding-top:20px;">
+      <div class="cta-band reveal">
         <div>
-          <h2>See money come back.</h2>
-          <p>Simulate an outage, run a recovery batch, open any case audit.</p>
+          <h2>Watch money return.</h2>
+          <p>Simulate an outage. Run a batch. Open the audit. Impressed yet?</p>
         </div>
-        <a class="btn-primary" href="/demo">Launch console →</a>
+        <a class="btn btn-main" href="/demo">Launch console <span class="arr">→</span></a>
       </div>
     </section>
 
@@ -588,42 +784,89 @@
   </div>
 
 <script>
-  // Rolling brand strip
+  // Brand: whole-word mask rise + letter fade (never wraps)
   (function () {
-    const items = [
-      "Revene", "Predict · Recover", "At-risk revenue", "Stopping rules",
-      "Audit trail", "Preempt lane", "Smart retry", "Batch ₹ proof"
-    ];
-    const row = items.map(t => {
-      if (t === "Revene") return `<span><em>Revene</em></span><span class="dot">·</span>`;
-      return `<span>${t}</span><span class="dot">·</span>`;
-    }).join("");
-    document.getElementById("marquee").innerHTML = row + row;
+    const word = "Revene";
+    const el = document.getElementById("brand");
+    const track = document.createElement("span");
+    track.className = "brand-track";
+    [...word].forEach((ch, i) => {
+      const s = document.createElement("span");
+      s.className = "letter" + (i >= 3 ? " accent-word" : "");
+      s.textContent = ch;
+      s.style.animationDelay = (0.35 + i * 0.06) + "s";
+      track.appendChild(s);
+    });
+    el.appendChild(track);
   })();
+
+  // Endless marquee
+  (function () {
+    const bits = [
+      ["Revene", true], ["Predict", false], ["Preempt", false], ["Recover", false],
+      ["Audit trail", false], ["Stop rules", false], ["Batch proof", false], ["Live ₹", false]
+    ];
+    const html = bits.map(([t, hi]) =>
+      `<span class="${hi ? "hi" : ""}">${t}</span><span class="sep">·</span>`
+    ).join("");
+    document.getElementById("marquee").innerHTML = html + html;
+  })();
+
+  // Scroll reveal (sections + image shots)
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) e.target.classList.add("in");
+    });
+  }, { threshold: 0.14, rootMargin: "0px 0px -40px 0px" });
+  document.querySelectorAll(".reveal, .shot").forEach(el => io.observe(el));
+
+  // Soft parallax on images while in view
+  const shots = [...document.querySelectorAll(".shot img")];
+  window.addEventListener("scroll", () => {
+    const y = window.scrollY;
+    shots.forEach((img, i) => {
+      const parent = img.closest(".shot");
+      if (!parent || !parent.classList.contains("in")) return;
+      const rect = parent.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) return;
+      const offset = (rect.top - window.innerHeight * 0.3) * (0.04 + i * 0.015);
+      img.style.translate = `0 ${offset}px`;
+    });
+  }, { passive: true });
 
   function money(n) {
     return "₹" + Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
   }
 
-  // Smooth rolling counter (eases up whenever live totals climb)
+  // Rolling counter with subtle blur tick (odometer feel)
   function animateTo(el, target, duration) {
-    const start = Number(String(el.dataset.value || el.textContent).replace(/,/g, "")) || 0;
+    const start = Number(el.dataset.value || String(el.textContent).replace(/,/g, "")) || 0;
     if (target === start) {
       el.textContent = Math.round(target).toLocaleString("en-IN");
-      el.dataset.value = target;
+      el.dataset.value = String(target);
       return;
     }
+    el.classList.add("tick");
     const t0 = performance.now();
-    const from = start;
     function frame(now) {
       const p = Math.min(1, (now - t0) / duration);
       const eased = 1 - Math.pow(1 - p, 3);
-      const val = Math.round(from + (target - from) * eased);
-      el.textContent = val.toLocaleString("en-IN");
+      el.textContent = Math.round(start + (target - start) * eased).toLocaleString("en-IN");
       if (p < 1) requestAnimationFrame(frame);
-      else el.dataset.value = target;
+      else {
+        el.dataset.value = String(target);
+        el.classList.remove("tick");
+      }
     }
     requestAnimationFrame(frame);
+  }
+
+  function flashMoney(el, text) {
+    if (el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove("flash");
+    void el.offsetWidth;
+    el.classList.add("flash");
   }
 
   function refreshStats() {
@@ -633,12 +876,12 @@
         const recovered = Number(s.live_revenue_recovered || s.revenue_recovered || 0);
         const preempted = Number(s.live_revenue_preempted || 0);
         const won = recovered + preempted;
-        animateTo(document.getElementById("hero-won"), won, 1100);
-        document.getElementById("sig-recovered").textContent = money(recovered);
-        document.getElementById("sig-preempted").textContent = money(preempted);
+        animateTo(document.getElementById("hero-won"), won, 1400);
+        flashMoney(document.getElementById("sig-recovered"), money(recovered));
+        flashMoney(document.getElementById("sig-preempted"), money(preempted));
         if (won > 0) {
           document.getElementById("hero-meta").textContent =
-            "Recovered after failure + saved before failure";
+            "Recovered after failure + preempted before failure";
         }
       })
       .catch(() => {});

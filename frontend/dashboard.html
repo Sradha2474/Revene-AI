@@ -143,6 +143,8 @@
   tbody tr:first-child { animation: rowIn 0.35s ease; }
   tbody tr.clickable { cursor: pointer; }
   tbody tr.clickable:hover { background: var(--panel); }
+  tbody tr.selected { background: rgba(91,141,239,0.12); outline: 1px solid rgba(91,141,239,0.35); }
+  #audit-panel.has-case { border-left: 2px solid var(--brand); }
   @keyframes rowIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
 
   .tag {
@@ -242,6 +244,20 @@
       </p>
       <button class="batch-btn" id="batch-btn" onclick="runBatch()">▶ Run recovery batch</button>
       <div class="batch-result" id="batch-result"></div>
+    </div>
+    <div class="section">
+      <h2>Razorpay Test Mode</h2>
+      <div class="muted" id="rzp-status" style="margin-bottom:10px;">Checking keys…</div>
+      <p class="muted" style="margin:0 0 10px;">
+        1) Click a row in <strong>At-risk queue</strong> (right)<br>
+        2) Or tap the button below for the latest open case
+      </p>
+      <button class="batch-btn" id="rzp-quick-btn" type="button" style="padding:8px;">
+        Create Payment Link (latest case)
+      </button>
+      <div id="rzp-quick-result" style="margin-top:10px;font-size:12px;line-height:1.45;min-height:40px;padding:8px;background:var(--panel);border:1px solid var(--border);border-radius:6px;">
+        Click the button — link will appear here.
+      </div>
     </div>
     <div class="section">
       <h2>Stopping rules (always on)</h2>
@@ -385,9 +401,11 @@
         const tbody = document.getElementById("queue-body");
         tbody.innerHTML = "";
         document.getElementById("queue-count").textContent = rows.length + " recent";
+        window.__atRiskRows = rows;
         rows.forEach(ev => {
           const tr = document.createElement("tr");
           tr.className = "clickable";
+          if (window.__selectedCaseId === ev.id) tr.classList.add("selected");
           tr.onclick = () => loadCase(ev.id);
           const stageClass = ev.stage === "failed" ? "tag-failed" : "tag-degrading";
           tr.innerHTML = `
@@ -405,20 +423,79 @@
       .catch(() => {});
   }
 
+  function createLinkForLatest() {
+    const box = document.getElementById("rzp-quick-result");
+    const btn = document.getElementById("rzp-quick-btn");
+    box.style.color = "var(--text)";
+    box.innerHTML = "Fetching latest at-risk case…";
+    if (btn) { btn.disabled = true; btn.textContent = "Working…"; }
+
+    fetch(`${backendUrl}/api/at_risk?limit=40`)
+      .then(r => r.json())
+      .then(rows => {
+        window.__atRiskRows = rows || [];
+        const pick = (rows || []).find(r =>
+          ["open", "recovering", "awaiting_payment"].includes(r.status)
+        );
+        if (!pick) {
+          box.innerHTML = "<span class='outcome-fail'>No open/recovering case found.</span><br>Wait for live feed (failed payments) or run batch, then try again.";
+          return;
+        }
+        box.innerHTML = `Using case <strong>#${pick.id}</strong> (₹${pick.amount}) — calling Razorpay…`;
+        return createRazorpayLink(pick.id, "rzp-quick-result");
+      })
+      .catch(err => {
+        box.innerHTML = `<span class='outcome-fail'>Could not load cases: ${err}</span><br>Is backend running at ${backendUrl}?`;
+      })
+      .finally(() => {
+        if (btn) { btn.disabled = false; btn.textContent = "Create Payment Link (latest case)"; }
+      });
+  }
+
   function loadCase(id) {
+    window.__selectedCaseId = id;
+    const panelWrap = document.getElementById("audit-panel");
+    if (panelWrap) panelWrap.classList.add("has-case");
+    const panel = document.getElementById("audit-steps");
+    panel.innerHTML = "<span class='muted'>Loading case #" + id + "…</span>";
+
+    // highlight selection without full queue wipe race
+    document.querySelectorAll("#queue-body tr").forEach(tr => tr.classList.remove("selected"));
+    const match = [...document.querySelectorAll("#queue-body tr")].find(tr =>
+      tr.innerText.includes("#" + id)
+    );
+    if (match) match.classList.add("selected");
+
     fetch(`${backendUrl}/api/case/${id}`)
       .then(r => r.json())
       .then(data => {
-        const panel = document.getElementById("audit-steps");
+        if (data.error) {
+          panel.innerHTML = `<span class="outcome-fail">${data.error}</span>`;
+          return;
+        }
         const ev = data.event;
+        const links = data.payment_links || [];
         let html = `
           <div style="margin-bottom:10px;">
             <strong>Case #${ev.id}</strong> · ${ev.customer_id}<br>
             <span class="muted">${ev.stage} / ${ev.root_cause} / ${ev.status}</span><br>
             <span class="mono">${money(ev.amount_recovered)} recovered of ${money(ev.amount)}</span>
           </div>
+          <button class="batch-btn" type="button" style="margin-bottom:12px;padding:8px;"
+            id="case-link-btn"
+            ${ev.status === 'recovered' ? 'disabled' : ''}>
+            Create Razorpay Test Payment Link
+          </button>
+          <div id="link-result" style="margin-bottom:12px;min-height:24px;"></div>
         `;
-        if (!data.audit.length) {
+        if (links.length) {
+          html += `<div style="margin-bottom:10px;"><strong>Payment links</strong></div>`;
+          links.forEach(l => {
+            html += `<div class="audit-step"><div class="step-name">${l.status}</div>
+              <div><a href="${l.short_url}" target="_blank" rel="noopener" style="color:var(--brand)">${l.short_url || l.razorpay_link_id}</a></div></div>`;
+          });
+        }
+        if (!data.audit || !data.audit.length) {
           html += "<div class='empty-hint'>No audit steps yet.</div>";
         } else {
           data.audit.forEach(a => {
@@ -432,7 +509,78 @@
           });
         }
         panel.innerHTML = html;
+        const caseBtn = document.getElementById("case-link-btn");
+        if (caseBtn && ev.status !== "recovered") {
+          caseBtn.addEventListener("click", () => createRazorpayLink(ev.id, "link-result"));
+        }
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      })
+      .catch(err => {
+        panel.innerHTML = `<span class="outcome-fail">Failed to load case. ${err}</span>`;
       });
+  }
+
+  function createRazorpayLink(id, resultElId) {
+    const box =
+      document.getElementById(resultElId || "link-result") ||
+      document.getElementById("rzp-quick-result");
+    if (!box) {
+      alert("UI box missing — hard refresh the page (Ctrl+Shift+R)");
+      return Promise.reject(new Error("no result box"));
+    }
+    box.style.color = "var(--text)";
+    box.innerHTML = "⏳ Creating Razorpay Test link… (2–5 sec)";
+
+    return fetch(`${backendUrl}/api/cases/${id}/payment_link`, { method: "POST" })
+      .then(async r => {
+        let data = {};
+        try { data = await r.json(); } catch (_) {}
+        if (!r.ok) {
+          throw new Error(data.error || data.hint || ("HTTP " + r.status));
+        }
+        return data;
+      })
+      .then(data => {
+        if (data.short_url) {
+          box.innerHTML = `✅ <a href="${data.short_url}" target="_blank" rel="noopener" style="color:var(--safe);font-weight:600;">${data.short_url}</a>
+            <div class="muted">Opened in new tab. Pay with Razorpay test card.</div>`;
+          try { window.open(data.short_url, "_blank", "noopener"); } catch (_) {}
+        } else {
+          box.innerHTML = `<span class="outcome-fail">No short_url in response</span><pre style="white-space:pre-wrap;font-size:11px;">${JSON.stringify(data)}</pre>`;
+        }
+        refreshQueue();
+        return data;
+      })
+      .catch(err => {
+        box.innerHTML = `<span class="outcome-fail">Failed: ${err.message}</span>
+          <div class="muted">Backend: ${backendUrl} · Case #${id}</div>`;
+        console.error("createRazorpayLink", err);
+        throw err;
+      });
+  }
+
+  // Wire quick button without relying only on inline onclick
+  document.getElementById("rzp-quick-btn")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    createLinkForLatest();
+  });
+
+  function refreshRzpStatus() {
+    fetch(`${backendUrl}/api/razorpay/status`)
+      .then(r => r.json())
+      .then(s => {
+        const el = document.getElementById("rzp-status");
+        if (!el) return;
+        if (s.configured) {
+          el.innerHTML = `<span class="outcome-success">Keys loaded</span> · mode ${s.mode}`
+            + (s.webhook_secret_configured
+              ? " · webhook secret OK"
+              : " · <span class='outcome-fail'>webhook secret missing</span> (ok until tunnel)");
+        } else {
+          el.innerHTML = `<span class="outcome-fail">Keys missing</span> — add RAZORPAY_KEY_ID / SECRET to .env`;
+        }
+      })
+      .catch(() => {});
   }
 
   let count = 0;
@@ -444,6 +592,16 @@
     });
 
     socket.on("batch_complete", showBatch);
+
+    socket.on("razorpay_captured", (data) => {
+      if (data.live_revenue_recovered != null) {
+        document.getElementById("recovered").textContent = money(data.live_revenue_recovered);
+      }
+      refreshQueue();
+      if (window.__selectedCaseId) loadCase(window.__selectedCaseId);
+    });
+
+    socket.on("payment_link_created", () => refreshQueue());
 
     socket.on("transaction", (data) => {
       count++;
@@ -514,6 +672,7 @@
     if (s.live_revenue_protected != null) document.getElementById("protected").textContent = money(s.live_revenue_protected);
   }).catch(() => {});
   refreshQueue();
+  refreshRzpStatus();
 </script>
 </body>
 </html>
