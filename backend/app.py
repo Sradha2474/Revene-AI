@@ -9,9 +9,12 @@ SIMPLE FLOW:
   4. Agent picks ONE action with stop rules, logs audit
   5. Dashboard shows ₹ preempted / ₹ recovered live
   6. /api/run_recovery_batch proves money won back on a batch
+  7. Razorpay Test Payment Links + webhooks
+     → ₹ recovered only after payment.captured
 
-Run: python backend/app.py
-  → http://localhost:5000       landing (Buildathon-inspired)
+Run (dev):  python backend/app.py
+Run (prod): python scripts/run_production.py
+  → http://localhost:5000       landing
   → http://localhost:5000/demo  recovery console
 """
 
@@ -21,53 +24,191 @@ import json
 import random
 import threading
 import time
+import uuid
+
+# Load .env from project root (RAZORPAY_* keys) — never hardcode secrets
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "monitor"))
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "engine"))
 sys.path.append(os.path.dirname(__file__))
 
-from flask import Flask, send_file, request, jsonify
+from flask import Flask, send_file, send_from_directory, request, jsonify, g
 from flask_socketio import SocketIO
 from outage_monitor import OutageMonitor
 from route_recommender import recommend_route
 import db
 import recovery_agent as agent
+import razorpay_client as rzp
+import action_executor
+import webhooks as wh
+import recovery_pipeline
+import payment_health
+import simulator
+import config as app_config
+import logging_setup
+import security
 import xgboost as xgb
 import pickle
 import pandas as pd
 
 BASE = os.path.join(os.path.dirname(__file__), "..")
 
+SETTINGS = app_config.load_settings()
+log = logging_setup.setup_logging(SETTINGS.log_level)
+
+_boot_errors = app_config.validate_settings(SETTINGS)
+if _boot_errors:
+    for err in _boot_errors:
+        log.error("CONFIG: %s", err)
+    if SETTINGS.is_production:
+        raise SystemExit("Refusing to start: fix production config errors above.")
+elif SETTINGS.is_production:
+    log.info("Production config OK (env=%s)", SETTINGS.app_env)
+else:
+    log.info("Development mode (env=%s)", SETTINGS.app_env)
+
 db.init_db()
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config["JSON_SORT_KEYS"] = False
+_cors = SETTINGS.cors_origins
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*" if _cors == ["*"] else _cors,
+    async_mode="threading",
+    logger=False,
+    engineio_logger=False,
+)
+
+
+def _settings():
+    return SETTINGS
+
+
+@app.before_request
+def _request_context():
+    g.request_id = request.headers.get("X-Request-Id") or uuid.uuid4().hex[:12]
+    g.started_at = time.monotonic()
+
+
+@app.after_request
+def add_security_and_cors(response):
+    origin_ok = "*"
+    if SETTINGS.cors_origins != ["*"]:
+        req_origin = request.headers.get("Origin")
+        if req_origin in SETTINGS.cors_origins:
+            origin_ok = req_origin
+        else:
+            origin_ok = SETTINGS.cors_origins[0]
+    response.headers["Access-Control-Allow-Origin"] = origin_ok
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type,Authorization,X-API-Key,X-Request-Id,X-Razorpay-Signature"
+    )
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["X-Request-Id"] = getattr(g, "request_id", "")
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if SETTINGS.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
+@app.errorhandler(404)
+def _not_found(_e):
+    if request.path.startswith("/api/") or request.path.startswith("/webhooks/"):
+        return jsonify({"error": "not_found"}), 404
+    return jsonify({"error": "not_found"}), 404
+
+
+@app.errorhandler(500)
+def _server_error(e):
+    log.exception("Unhandled error request_id=%s: %s", getattr(g, "request_id", "-"), e)
+    return jsonify({"error": "internal_error", "request_id": getattr(g, "request_id", None)}), 500
+
+
+@app.route("/health")
+def health():
+    """Liveness — process is up."""
+    return jsonify({
+        "status": "ok",
+        "service": "revene",
+        "env": SETTINGS.app_env,
+    })
+
+
+@app.route("/ready")
+def ready():
+    """Readiness — DB + model + optional Razorpay."""
+    checks = {"db": False, "model": False, "razorpay": SETTINGS.razorpay_configured}
+    try:
+        db.get_db_stats()
+        checks["db"] = True
+    except Exception as ex:
+        log.warning("ready db check failed: %s", ex)
+    checks["model"] = model is not None
+    ok = checks["db"] and checks["model"]
+    if SETTINGS.is_production:
+        ok = ok and checks["razorpay"] and bool(SETTINGS.razorpay_webhook_secret)
+    code = 200 if ok else 503
+    return jsonify({"status": "ready" if ok else "not_ready", "checks": checks}), code
+
+
+REACT_DIST = os.path.join(BASE, "web", "dist")
+
+
+def _react_index():
+    index = os.path.join(REACT_DIST, "index.html")
+    if os.path.isfile(index):
+        return send_file(index)
+    # Fallback to legacy HTML if React not built yet
+    return None
 
 
 @app.route("/")
 def index():
-    """Product landing."""
+    """Product landing (React SPA when web/dist exists)."""
+    spa = _react_index()
+    if spa:
+        return spa
     return send_file(os.path.join(BASE, "frontend", "landing.html"))
 
 
 @app.route("/demo")
-def demo():
-    """Live predictive recovery console."""
+@app.route("/demo/")
+@app.route("/demo/<path:subpath>")
+def demo(subpath=None):
+    """Recovery console SPA routes."""
+    spa = _react_index()
+    if spa:
+        return spa
     return send_file(os.path.join(BASE, "frontend", "dashboard.html"))
 
 
 @app.route("/assets/<path:filename>")
 def assets(filename):
-    """Landing / marketing images."""
-    return send_file(os.path.join(BASE, "frontend", "assets", filename))
+    """Vite build assets, else legacy marketing images."""
+    dist_assets = os.path.join(REACT_DIST, "assets")
+    candidate = os.path.join(dist_assets, filename)
+    if os.path.isfile(candidate):
+        return send_from_directory(dist_assets, filename)
+    legacy = os.path.join(BASE, "frontend", "assets", filename)
+    if os.path.isfile(legacy):
+        return send_file(legacy)
+    return jsonify({"error": "not_found"}), 404
 
 
-@app.after_request
-def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    return response
+@app.route("/favicon.svg")
+def favicon():
+    path = os.path.join(REACT_DIST, "favicon.svg")
+    if os.path.isfile(path):
+        return send_file(path)
+    legacy = os.path.join(BASE, "web", "public", "favicon.svg")
+    if os.path.isfile(legacy):
+        return send_file(legacy)
+    return ("", 204)
 
 
 # ---- Load trained risk model ----
@@ -166,6 +307,10 @@ def handle_at_risk_case(
 
 def simulate_loop():
     """Background loop: live payments + predictive recovery."""
+    if not SETTINGS.enable_live_simulator:
+        log.info("Live simulator disabled (ENABLE_LIVE_SIMULATOR=0)")
+        return
+    log.info("Live simulator started")
     while True:
         customer_id = f"cust_{random.randint(1, 4000)}"
         amount = round(random.lognormvariate(6.5, 1.0), 2)
@@ -400,12 +545,31 @@ def api_db_stats():
     stats["live_revenue_preempted"] = round(state["revenue_preempted"], 2)
     stats["live_revenue_recovered"] = round(state["revenue_recovered"], 2)
     stats["live_revenue_protected"] = round(state["revenue_protected"], 2)
+    stats["razorpay_configured"] = rzp.is_configured()
+    stats["webhook_secret_configured"] = bool(wh.webhook_secret())
     return jsonify(stats)
 
 
 @app.route("/api/at_risk")
 def api_at_risk():
     return jsonify(db.get_recent_at_risk(int(request.args.get("limit", 40))))
+
+
+@app.route("/api/razorpay/status")
+def api_razorpay_status():
+    """Dashboard badge: are Test keys loaded?"""
+    return jsonify({
+        "configured": rzp.is_configured(),
+        "webhook_secret_configured": bool(wh.webhook_secret()),
+        "mode": "test" if (os.getenv("RAZORPAY_KEY_ID") or "").startswith("rzp_test") else "unknown",
+        "env": SETTINGS.app_env,
+        "live_simulator": SETTINGS.enable_live_simulator,
+        "hint": (
+            "Keys loaded from .env"
+            if rzp.is_configured()
+            else "Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to .env"
+        ),
+    })
 
 
 @app.route("/api/case/<int:event_id>")
@@ -417,10 +581,233 @@ def api_case(event_id):
         "event": event,
         "actions": db.get_actions_for_event(event_id),
         "audit": db.get_audit_for_event(event_id),
+        "payment_links": db.get_payment_links_for_event(event_id),
     })
 
 
+@app.route("/api/cases/<int:event_id>/payment_link", methods=["POST"])
+@security.require_api_key_if_enabled(_settings)
+@security.rate_limit(20, 60.0, prefix="payment_link")
+def api_create_payment_link(event_id):
+    """
+    DEMO ACTION: create a real Razorpay Test Payment Link for this at-risk case.
+    Runs investigate → policy first; only GREEN (or force=1) creates the link.
+    """
+    event = db.get_at_risk_event(event_id)
+    if not event:
+        return jsonify({"error": "not found"}), 404
+    if event.get("status") == "recovered":
+        return jsonify({"error": "already_recovered"}), 400
+
+    force = request.args.get("force") == "1" or (request.json or {}).get("force")
+
+    # Score context for investigation
+    hour = time.localtime().tm_hour
+    dow = time.localtime().tm_wday
+    scores = {}
+    if event.get("risk_scores_json"):
+        try:
+            scores = json.loads(event["risk_scores_json"])
+        except Exception:
+            scores = {}
+    if not scores:
+        scores, outage_status, bank_check = score_methods(
+            event["bank"], event["amount"], hour, dow
+        )
+    else:
+        _, outage_status, bank_check = score_methods(
+            event["bank"], event["amount"], hour, dow
+        )
+
+    pipeline = recovery_pipeline.run_investigation(
+        event,
+        scores,
+        outage_status,
+        bank_check=bank_check,
+        interventions=int(event.get("attempts") or 0),
+        auto_execute_green_link=False,
+    )
+    policy = pipeline["policy"]
+
+    # Dashboard already requires a human click → that satisfies YELLOW.
+    # Only RED blocks (unless force=1). React can use /investigate + /approvals later.
+    if policy["traffic_light"] == "RED" and not force:
+        return jsonify({"error": "policy_blocked", "pipeline": pipeline}), 403
+
+    result = action_executor.create_recovery_payment_link(event)
+    if not result.get("ok"):
+        return jsonify({**result, "pipeline": pipeline}), 400
+
+    socketio.emit("payment_link_created", {
+        "event_id": event_id,
+        "short_url": result.get("short_url"),
+        "razorpay_link_id": result.get("razorpay_link_id"),
+    })
+    return jsonify({**result, "pipeline": pipeline})
+
+
+@app.route("/api/cases/<int:event_id>/investigate", methods=["GET", "POST"])
+def api_investigate(event_id):
+    """Phase 2+3: WHY + WHAT NEXT + policy traffic light."""
+    event = db.get_at_risk_event(event_id)
+    if not event:
+        return jsonify({"error": "not found"}), 404
+    hour = time.localtime().tm_hour
+    dow = time.localtime().tm_wday
+    scores = {}
+    if event.get("risk_scores_json"):
+        try:
+            scores = json.loads(event["risk_scores_json"])
+        except Exception:
+            scores = {}
+    if not scores:
+        scores, outage_status, bank_check = score_methods(
+            event["bank"], event["amount"], hour, dow
+        )
+    else:
+        _, outage_status, bank_check = score_methods(
+            event["bank"], event["amount"], hour, dow
+        )
+    out = recovery_pipeline.run_investigation(
+        event, scores, outage_status, bank_check=bank_check,
+        interventions=len(db.get_actions_for_event(event_id)),
+    )
+    return jsonify(out)
+
+
+@app.route("/api/approvals")
+def api_approvals():
+    return jsonify(db.list_approvals(request.args.get("status", "pending")))
+
+
+@app.route("/api/approvals/<int:approval_id>/decide", methods=["POST"])
+@security.require_api_key_if_enabled(_settings)
+def api_approval_decide(approval_id):
+    body = request.json or {}
+    status = body.get("status", "approved")  # approved | rejected
+    row = db.resolve_approval(approval_id, status=status)
+    if not row:
+        return jsonify({"error": "not found"}), 404
+    result = {"approval": row}
+    if status == "approved":
+        event = db.get_at_risk_event(row["event_id"])
+        if event and row.get("recommended_action") == "send_payment_link":
+            result["execution"] = action_executor.create_recovery_payment_link(event)
+        db.add_audit(row["event_id"], "approval_resolved", f"status={status}")
+    else:
+        db.update_at_risk_event(row["event_id"], status="stopped")
+        db.add_audit(row["event_id"], "approval_rejected", "Human rejected recovery action")
+    return jsonify(result)
+
+
+@app.route("/api/payment_health")
+def api_payment_health():
+    """Snapshot of bank health from the live outage monitor."""
+    banks = []
+    for b in BANKS:
+        check = outage_monitor._check(b)
+        banks.append(payment_health.route_health(
+            bank=b,
+            z_score=float(check.get("z_score") or 0),
+            outage=bool(check.get("outage")),
+            recent_failure_rate=check.get("recent_failure_rate"),
+            baseline_failure_rate=check.get("baseline_failure_rate"),
+        ))
+    return jsonify({"banks": banks, "active_outages": list(outage_monitor.active_outages)})
+
+
+@app.route("/api/simulate_strategies", methods=["GET", "POST"])
+def api_simulate_strategies():
+    """Phase 5: compare recovery thresholds on recent/open cases."""
+    n = int(request.args.get("n") or (request.json or {}).get("n", 40))
+    thresholds = (request.json or {}).get("thresholds") or [0.70, 0.85]
+    cases = db.get_recent_at_risk(n)
+    sim_input = []
+    hour = time.localtime().tm_hour
+    dow = time.localtime().tm_wday
+    for ev in cases:
+        scores = {}
+        if ev.get("risk_scores_json"):
+            try:
+                scores = json.loads(ev["risk_scores_json"])
+            except Exception:
+                scores = {}
+        if not scores:
+            scores, _, _ = score_methods(ev["bank"], ev["amount"], hour, dow)
+        p = max(scores.values()) if scores else 0.5
+        sim_input.append({"amount": ev["amount"], "recovery_probability": p})
+    return jsonify(simulator.simulate_threshold_strategies(sim_input, thresholds))
+
+
+@app.route("/api/audit/verify")
+def api_audit_verify():
+    return jsonify(db.verify_audit_chain())
+
+
+@app.route("/webhooks/razorpay", methods=["POST"])
+@security.rate_limit(120, 60.0, prefix="webhook")
+def razorpay_webhook():
+    """
+    Razorpay calls this URL (via tunnel) on payment events.
+    Must verify signature; must ignore duplicates.
+    """
+    body = request.get_data()
+    signature = request.headers.get("X-Razorpay-Signature")
+
+    secret_ok = bool(wh.webhook_secret())
+    if SETTINGS.is_production and not secret_ok:
+        return jsonify({"error": "webhook_secret_required"}), 503
+
+    if secret_ok:
+        if not wh.verify_signature(body, signature):
+            log.warning("webhook invalid signature ip=%s", security.client_ip())
+            return jsonify({"error": "invalid_signature"}), 400
+    else:
+        if not SETTINGS.allow_unsigned_webhooks:
+            return jsonify({
+                "error": "webhook_secret_missing",
+                "hint": "Set RAZORPAY_WEBHOOK_SECRET in .env (from Razorpay Dashboard webhook form)",
+            }), 503
+        log.warning("webhook accepted unsigned (dev only) request_id=%s", g.request_id)
+
+    try:
+        payload = wh.parse_payload(body)
+    except Exception:
+        return jsonify({"error": "invalid_json"}), 400
+
+    def on_captured(meta):
+        result = action_executor.apply_captured_payment(meta)
+        if result.get("ok") and result.get("amount_recovered"):
+            state["revenue_recovered"] += float(result["amount_recovered"])
+            socketio.emit("razorpay_captured", {
+                "event_id": result.get("event_id"),
+                "amount_recovered": result.get("amount_recovered"),
+                "live_revenue_recovered": round(state["revenue_recovered"], 2),
+            })
+        return result
+
+    def on_failed(meta):
+        return action_executor.apply_failed_payment(meta)
+
+    out = wh.handle_verified_event(
+        payload,
+        already_seen=db.webhook_already_seen,
+        mark_seen=db.mark_webhook_seen,
+        on_captured=on_captured,
+        on_failed=on_failed,
+    )
+    log.info(
+        "webhook handled type=%s duplicate=%s request_id=%s",
+        out.get("handled") or out.get("event") or payload.get("event"),
+        out.get("duplicate", False),
+        g.request_id,
+    )
+    return jsonify(out), 200
+
+
 @app.route("/api/run_recovery_batch", methods=["POST", "GET"])
+@security.require_api_key_if_enabled(_settings)
+@security.rate_limit(10, 60.0, prefix="batch")
 def run_recovery_batch():
     """
     THE JUDGE BUTTON.
@@ -481,7 +868,7 @@ def run_recovery_batch():
         outage_flag = bool(bank_check.get("outage"))
         # refresh live event row (attempts/status may change mid-batch)
         live = db.get_at_risk_event(event["id"]) or event
-        if live["status"] in ("recovered", "stopped", "escalated"):
+        if live["status"] in ("recovered", "stopped", "escalated", "awaiting_payment"):
             continue
 
         result = agent.run_one_recovery_step(
@@ -492,6 +879,9 @@ def run_recovery_batch():
             save_action=_persist_action,
             update_event=db.update_at_risk_event,
             add_audit=db.add_audit,
+            # Batch stays simulator by default (avoid spamming Razorpay).
+            # Use POST /api/cases/<id>/payment_link for real Test links.
+            create_payment_link=None,
         )
         results.append(result)
 
@@ -530,9 +920,27 @@ def run_recovery_batch():
 
 @socketio.on("connect")
 def on_connect():
-    print("Dashboard connected")
+    log.info("Dashboard connected")
+
+
+def start_background_jobs():
+    if SETTINGS.enable_live_simulator:
+        threading.Thread(target=simulate_loop, daemon=True, name="revene-sim").start()
 
 
 if __name__ == "__main__":
-    threading.Thread(target=simulate_loop, daemon=True).start()
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False, allow_unsafe_werkzeug=True)
+    start_background_jobs()
+    log.info(
+        "Starting Revene on %s:%s env=%s simulator=%s",
+        SETTINGS.host,
+        SETTINGS.port,
+        SETTINGS.app_env,
+        SETTINGS.enable_live_simulator,
+    )
+    socketio.run(
+        app,
+        host=SETTINGS.host,
+        port=SETTINGS.port,
+        debug=False,
+        allow_unsafe_werkzeug=True,
+    )
