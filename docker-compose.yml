@@ -1,0 +1,19 @@
+services:
+  revene:
+    build: .
+    ports:
+      - "${PORT:-5000}:5000"
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5000
+      # Demo console still useful in container; set 0 for webhook-only workers
+      ENABLE_LIVE_SIMULATOR: ${ENABLE_LIVE_SIMULATOR:-1}
+    volumes:
+      - revene-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  revene-data:

@@ -1,0 +1,11 @@
+.git
+.env
+__pycache__
+*.pyc
+.venv
+venv
+data/*.db
+data/*.db-*
+*.md
+agent-transcripts
+.cursor
