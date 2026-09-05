@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Sora", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-ink: #06080e;
+  --color-ink-deep: #030407;
+  --color-panel: #0d111a;
+  --color-panel-2: #131926;
+  --color-panel-glass: rgba(13, 17, 26, 0.72);
+  --color-line: #1e2638;
+  --color-line-highlight: rgba(255, 255, 255, 0.12);
+  --color-mute: #8591a5;
+  --color-fg: #f0f3f8;
+  --color-accent: #c8d0dc;
+  --color-razorpay-blue: #0284c7;
+  --color-razorpay-electric: #2563eb;
+  --color-razorpay-dark: #081a36;
+  --color-policy-green: #10b981;
+  --color-policy-yellow: #f59e0b;
+  --color-policy-red: #f43f5e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-ink);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-heading {
+  font-family: var(--font-heading);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Glassmorphism utilities */
+.glass-panel {
+  background: rgba(13, 17, 26, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel-subtle {
+  background: rgba(19, 25, 38, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.008) 100%);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 30px -5px rgba(2, 132, 199, 0.18);
+  transform: translateY(-2px);
+}
+
+/* Specular bevel pill button */
+.specular-pill {
+  box-shadow: inset 0 -2px 0px rgba(0, 0, 0, 0.25), inset 0 2px 0px rgba(255, 255, 255, 0.3);
+}
+
+.specular-pill-glow {
+  box-shadow: inset 0 -2px 0px rgba(0, 0, 0, 0.3), inset 0 2px 0px rgba(255, 255, 255, 0.4), 0 0 24px -2px rgba(14, 165, 233, 0.45);
+}
+
+/* Glow highlights */
+.glow-cyan {
+  box-shadow: 0 0 35px -5px rgba(56, 189, 248, 0.35);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 35px -5px rgba(16, 185, 129, 0.35);
+}
+
+/* Radial aurora meshes */
+.aurora-bg {
+  background-image: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(14, 165, 233, 0.15), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 85% 80%, rgba(37, 99, 235, 0.1), transparent 60%),
+    linear-gradient(180deg, #06080e 0%, #080d17 50%, #06080e 100%);
+}
+
+.fintech-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #090c13;
+}
+::-webkit-scrollbar-thumb {
+  background: #232c3f;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #333f58;
+}
