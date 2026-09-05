@@ -5,3 +5,5 @@ xgboost
 shap
 flask
 flask-socketio
+python-dotenv
+razorpay
