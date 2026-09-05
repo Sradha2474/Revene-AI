@@ -261,10 +261,14 @@ def run_one_recovery_step(
     save_action: Callable,
     update_event: Callable,
     add_audit: Callable,
+    create_payment_link: Optional[Callable] = None,
 ) -> dict:
     """
     One full agent tick on a single at-risk case.
     Persists action + audit via callbacks (keeps this module DB-agnostic).
+
+    If create_payment_link is provided and action is send_payment_link,
+    we create a real Razorpay Test link and wait for webhook (no fake ₹).
     """
     event_id = event["id"]
     stage = event["stage"]
@@ -313,6 +317,41 @@ def run_one_recovery_step(
             "lane": "escalate",
         }
 
+    # ---- Real Razorpay Payment Link path (Phase 1) ----
+    if action == "send_payment_link" and create_payment_link is not None:
+        link_result = create_payment_link(event)
+        new_attempts = int(event.get("attempts", 0)) + 1
+        if link_result.get("ok"):
+            save_action(
+                event_id,
+                action,
+                method,
+                False,
+                0.0,
+                f"{choice['reason']} | link={link_result.get('short_url')}",
+            )
+            add_audit(
+                event_id,
+                "awaiting_payment",
+                f"Razorpay link issued; ₹ counted only after payment.captured. {link_result.get('short_url')}",
+            )
+            return {
+                "event_id": event_id,
+                "action": action,
+                "method": method,
+                "success": False,
+                "amount_recovered": 0.0,
+                "status": "awaiting_payment",
+                "reason": choice["reason"],
+                "rule_id": choice["rule_id"],
+                "lane": "recover",
+                "attempts": new_attempts,
+                "payment_link": link_result.get("short_url"),
+                "razorpay_link_id": link_result.get("razorpay_link_id"),
+            }
+        # Fall through to simulator if Razorpay failed / not configured
+        add_audit(event_id, "razorpay_fallback", f"Link create failed: {link_result.get('error')}; using simulator")
+
     success, mult = simulate_intervention_outcome(action, method, risk_scores, bank_outage)
     amount = float(event["amount"])
     recovered = round(amount * mult, 2) if success else 0.0
@@ -334,7 +373,6 @@ def run_one_recovery_step(
         )
         final_status = "recovered"
     else:
-        # still open / recovering unless max attempts
         next_status = "recovering"
         if new_attempts >= MAX_ATTEMPTS:
             next_status = "escalated"
